@@ -4608,7 +4608,8 @@
       "Get-AzApplicationGatewayAvailableWafRuleSets": {},
       "Get-AzApplicationGatewayAvailableSslOptions": {},
       "Get-AzInterfaceEndpoint": {},
-      "New-AzFirewallThreatIntelWhitelistObject": {}
+      "New-AzFirewallThreatIntelWhitelistObject": {},
+      "New-AzAzureNetworkWatcherMigrateMmaToArc": {}
     },
     "Az.NetworkCloud": {
       "Deploy-AzNetworkCloudCluster": {},

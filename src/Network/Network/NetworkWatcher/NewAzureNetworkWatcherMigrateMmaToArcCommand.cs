@@ -41,7 +41,7 @@
                 Query = query
             };
             QueryResponse response = rgClient.Resources(request);
-            var data = JsonConvert.DeserializeObject<List<object>>(response.Data.ToString());
+            var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
             WriteObject(data);
         }
     }
