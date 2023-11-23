@@ -20,29 +20,44 @@
     using System.Threading;
     using System.Text;
     using System.Net.Http;
+    using System.Dynamic;
+    using Microsoft.Azure.Management.Network.Models;
+    using Microsoft.Azure.Commands.Common.Strategies;
+    using Microsoft.Azure.Management.Network;
 
     [Cmdlet("New", ResourceManager.Common.AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
-    public class NewAzureNetworkWatcherMigrateMmaToArcCommand : NetworkWatcherBaseCmdlet
+    public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
     {
         public Action<string> WarningLog;
         private IAzureTokenCache _cache;
         private IProfileOperations _profile;
 
+        /// <summary>
+        /// The cancellation source.
+        /// </summary>
+        private CancellationTokenSource cancellationSource = null;
+
+        /// <summary>
+        /// Gets the cancellation source.
+        /// </summary>
+        protected CancellationToken? CancellationToken
+        {
+            get
+            {
+                return this.cancellationSource == null ? new CancellationTokenSource().Token : (CancellationToken?)this.cancellationSource.Token;
+            }
+        }
+
         public ISubscriptionClientWrapper SubscriptionAndTenantClient = null;
-        
+
         /// <summary>
         /// The endpoint that this client will communicate with.
         /// </summary>
         public Uri EndpointUri { get; set; }
 
         /// <summary>
-        /// The azure http client wrapper to use.
-        /// </summary>
-        private readonly HttpClientHelper httpClientHelper;
-
-        /// <summary>
         /// Gets or sets the query.
-        /// </summary>s
+        /// </summary>sub
         [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Resource Graph query")]
         [AllowEmptyString]
         public string Query
@@ -53,7 +68,7 @@
 
         ///// <summary>
         ///// Gets or sets the Work Space Id.
-        ///// </summary>s
+        ///// </summary>sub
         //[Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Work Space Id")]
         //[AllowEmptyString]
         //public string WorkSpaceId
@@ -62,7 +77,7 @@
         //    set;
         //}
 
-        public override void Execute()
+        public override async void Execute()
         {
             base.Execute();
             _cache = AzureSession.Instance.TokenCache;
@@ -79,8 +94,14 @@
             var endpointUri = new Uri(endpoint, UriKind.Absolute);
             EndpointUri = endpointUri;
 
-            GetAllSubscriptionsByUserContext();
-            this.QueryForArg(this.Query);
+            // Fetch all Subscriptions
+            IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
+            IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
+            WriteObject(allCmHasMMAWorkspaceMachine);
+
+            // For Query for ARG
+            // this.QueryForArg(this.Query);
         }
 
         public void QueryForArg(string query)
@@ -94,10 +115,45 @@
             var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
             WriteObject(data);
         }
-        public void GetAllSubscriptionsByUserContext()
+
+        public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
         {
+            List<ResponseWithContinuation<JObject[]>> cmResourceObjects = new List<ResponseWithContinuation<JObject[]>>();
             var tenantId = DefaultContext.Tenant.Id;
-            IEnumerable<AzureSubscription> subscriptionsList = ListAllSubscriptionsForTenant(tenantId);
+            return ListAllSubscriptionsForTenant(tenantId);
+        }
+
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public async Task<IEnumerable<ConnectionMonitorResourceDetail>> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList, string workSpaceId)
+        {
+            List<ResponseWithContinuation<JObject[]>> cmResourceObjects = new List<ResponseWithContinuation<JObject[]>>();
+
+            foreach (var subs in subscriptionsList)
+            {
+                cmResourceObjects.Add(await ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""));
+            }
+            return ExtractCmResourceDetails(cmResourceObjects);
+        }
+
+        /// <summary>
+        /// Get All the CMs which has MMAWorkspaceMachine as endpoint
+        /// </summary>
+        /// <param name="connectionMonitors">Basic details of CM like id, name , location, type</param>
+        /// <param name="endpointType">endpointType = MMAWorkspaceMachine</param>
+        public List<ConnectionMonitorResult> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType)
+        {
+            List<ConnectionMonitorResult> listCM = new List<ConnectionMonitorResult>();
+
+            foreach (var cm in connectionMonitors)
+            {
+                var cmBasicDetails = this.GetConnectionMonitorDetails(cm.Id);
+                listCM.Add(this.ConnectionMonitors.Get(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
+            }
+
+            return listCM.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
         }
 
         private IAccessToken AcquireAccessToken(
@@ -222,226 +278,107 @@
         //    return result.ToList();
         //}
 
-
         /// <summary>
         /// 
         /// </summary>
-        public void GetConnectionMonitorHasMMAMachineEndpoint(IEnumerable<AzureSubscription> subscriptions, string workSpaceId)
+        /// <param name="cmResourceObjects"></param>
+        /// <returns></returns>
+        private static List<ConnectionMonitorResourceDetail> ExtractCmResourceDetails(List<ResponseWithContinuation<JObject[]>> cmResourceObjects)
         {
+            List<ConnectionMonitorResourceDetail> connectionMonitors = new List<ConnectionMonitorResourceDetail>();
+            cmResourceObjects.ForEach(sub =>
+            {
+                if (sub?.Value?.Length > 0)
+                {
+                    foreach (JObject cm in sub.Value)
+                    {
+                        connectionMonitors.Add(new ConnectionMonitorResourceDetail
+                        {
+                            Id = cm["id"].Value<string>(),
+                            Name = cm["name"].Value<string>(),
+                            Location = cm["location"].Value<string>(),
+                            Type = cm["type"].Value<string>()
+                        });
+                    }
+                }
+            });
 
+            return connectionMonitors;
         }
 
         /// <summary>
         /// Gets the resources in a subscription.
         /// </summary>
-        private async Task<ResponseWithContinuation<JObject[]>> ListResourcesInSubscription()
+        private async Task<ResponseWithContinuation<JObject[]>> ListResourcesInSubscription(Guid SubscriptionId, string ResourceType, string ODataQuery)
         {
             var filterQuery = QueryFilterBuilder
                 .CreateFilter(
-                    subscriptionId: null,
+                    subscriptionId: SubscriptionId.ToString(),
                     resourceGroup: null,
-                    resourceType: this.ResourceType,
-                    resourceName: this.Name,
+                    resourceType: ResourceType,
+                    resourceName: null,
                     tagName: null,
                     tagValue: null,
-                    filter: this.ODataQuery);
+                    filter: ODataQuery);
 
             return await this
                 .GetResourcesClient()
                 .ListResources<JObject>(
-                    subscriptionId: this.SubscriptionId.Value,
-                    apiVersion: this.DefaultApiVersion,
+                    subscriptionId: SubscriptionId,
+                    apiVersion: "2016-09-01",
                     filter: filterQuery,
                     cancellationToken: this.CancellationToken.Value)
                 .ConfigureAwait(continueOnCapturedContext: false);
         }
 
-        ///// <summary>
-        ///// Gets a new instance of the <see cref="ResourceManagerRestRestClient"/>.
-        ///// </summary>
-        //public ResourceManagerRestRestClient GetResourcesClient()
-        //{
-        //    var endpoint = DefaultContext.Environment.GetEndpoint(AzureEnvironment.Endpoint.ResourceManager);
-
-        //    if (string.IsNullOrWhiteSpace(endpoint))
-        //    {
-        //        throw new ApplicationException(
-        //            "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
-        //    }
-
-        //    var endpointUri = new Uri(endpoint, UriKind.Absolute);
-
-        //    return new ResourceManagerRestRestClient(
-        //        endpointUri: endpointUri,
-        //        httpClientHelper: HttpClientHelperFactory.Instance
-        //        .CreateHttpClientHelper(
-        //                credentials: AzureSession.Instance.AuthenticationFactory
-        //                                         .GetServiceClientCredentials(
-        //                                            DefaultContext,
-        //                                            AzureEnvironment.Endpoint.ResourceManager),
-        //                headerValues: AzureSession.Instance.ClientFactory.UserAgents,
-        //                cmdletHeaderValues: this.GetCmdletHeaders()));
-        //}
-
         /// <summary>
-        /// Lists all the resources under a single the subscription.
+        /// Gets a new instance of the <see cref="ResourceManagerRestRestClient"/>.
         /// </summary>
-        /// <param name="subscriptionId">The subscription Id.</param>
-        /// <param name="apiVersion">The API version to use.</param>
-        /// <param name="cancellationToken"></param>
-        /// <param name="top">The number of resources to fetch.</param>
-        /// <param name="filter">The filter query.</param>
-        public Task<ResponseWithContinuation<TType[]>> ListResources<TType>(
-            Guid subscriptionId,
-            string apiVersion,
-            CancellationToken cancellationToken,
-            int? top = null,
-            string filter = null)
+        public ResourceManagerRestRestClient GetResourcesClient()
         {
-            var resourceId = NetworkWatcherUtility.GetResourceId(
-                subscriptionId: subscriptionId,
-                resourceGroupName: null,
-                resourceType: null,
-                resourceName: null);
+            var endpoint = DefaultContext.Environment.GetEndpoint(AzureEnvironment.Endpoint.ResourceManager);
 
-            var requestUri = this.GetResourceManagementRequestUri(
-                resourceId: resourceId,
-                action: "resources",
-                top: top == null ? null : string.Format("$top={0}", top.Value),
-                odataQuery: string.IsNullOrWhiteSpace(filter) ? null : string.Format("$filter={0}", filter),
-                apiVersion: apiVersion);
-
-            return this.SendRequestAsync<ResponseWithContinuation<TType[]>>(
-                httpMethod: HttpMethod.Get,
-                requestUri: requestUri,
-                cancellationToken: cancellationToken);
-        }
-
-        /// <summary>
-        /// Generates a resource management request <see cref="Uri"/> based on the input parameters. Supports both subscription and tenant level resource and the condensed resource type and name format.
-        /// </summary>
-        /// <param name="resourceId">The resource Id.</param>
-        /// <param name="apiVersion">The API version.</param>
-        /// <param name="action">The action.</param>
-        /// <param name="odataQuery">The OData query.</param>
-        /// <param name="top">Top resources - used in list queries.</param>
-        public Uri GetResourceManagementRequestUri(
-            string resourceId,
-            string apiVersion,
-            string action = null,
-            string odataQuery = null,
-            string top = null)
-        {
-            var resourceIdStringBuilder = new StringBuilder(resourceId.CoalesceString().TrimEnd('/'));
-
-            if (!string.IsNullOrWhiteSpace(action))
+            if (string.IsNullOrWhiteSpace(endpoint))
             {
-                resourceIdStringBuilder.AppendFormat("/{0}", action);
+                throw new ApplicationException(
+                    "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
             }
 
-            var parts = new[]
+            var endpointUri = new Uri(endpoint, UriKind.Absolute);
+
+            return new ResourceManagerRestRestClient(
+                endpointUri: endpointUri,
+                httpClientHelper: HttpClientHelperFactory.Instance
+                .CreateHttpClientHelper(
+                        credentials: AzureSession.Instance.AuthenticationFactory
+                                                 .GetServiceClientCredentials(
+                                                    DefaultContext,
+                                                    AzureEnvironment.Endpoint.ResourceManager),
+                        headerValues: AzureSession.Instance.ClientFactory.UserAgents,
+                        cmdletHeaderValues: this.GetCmdletHeaders()));
+        }
+
+        private Dictionary<string, string> GetCmdletHeaders()
+        {
+            return new Dictionary<string, string>
             {
-                top,
-                odataQuery,
-                string.Format("api-version={0}", apiVersion)
+                {"ParameterSetName", this.ParameterSetName },
+                {"CommandName", this.CommandRuntime.ToString() }
             };
-
-            var queryString = parts.Where(part => !string.IsNullOrWhiteSpace(part)).ConcatStrings("&");
-
-            resourceIdStringBuilder.AppendFormat("?{0}", queryString);
-
-            var relativeUri = resourceIdStringBuilder.ToString()
-                .Select(character => char.IsWhiteSpace(character) ? "%20" : character.ToString())
-                .ConcatStrings();
-
-            return new Uri(baseUri: this.EndpointUri, relativeUri: relativeUri);
         }
+    }
 
-        /// <summary>
-        /// Sends an HTTP request message and returns the result.
-        /// </summary>
-        /// <typeparam name="TResponseType">The type of the result of response from the server.</typeparam>
-        /// <param name="httpMethod">The http method to use.</param>
-        /// <param name="requestUri">The Uri of the operation.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        protected async Task<TResponseType> SendRequestAsync<TResponseType>(
-            HttpMethod httpMethod,
-            Uri requestUri,
-            CancellationToken cancellationToken)
-        {
-            using (var response = await this
-                .SendRequestAsync(httpMethod: httpMethod, requestUri: requestUri, cancellationToken: cancellationToken)
-                .ConfigureAwait(continueOnCapturedContext: false))
-            {
-                return await response
-                    .ReadContentAsJsonAsync<TResponseType>()
-                    .ConfigureAwait(continueOnCapturedContext: false);
-            }
-        }
+    /// <summary>
+    /// Connection Monitor Resource Details
+    /// </summary>
+    public class ConnectionMonitorResourceDetail
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
 
-        /// <summary>
-        /// Sends an HTTP request message and returns the result.
-        /// </summary>
-        /// <param name="httpMethod">The http method to use.</param>
-        /// <param name="requestUri">The Uri of the operation.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        protected async Task<HttpResponseMessage> SendRequestAsync(
-            HttpMethod httpMethod,
-            Uri requestUri,
-            CancellationToken cancellationToken)
-        {
-            using (var request = new HttpRequestMessage(method: httpMethod, requestUri: requestUri))
-            {
-                return await this.SendRequestAsync(request: request, cancellationToken: cancellationToken)
-                    .ConfigureAwait(continueOnCapturedContext: false);
-            }
-        }
+        public string Type { get; set; }
 
-        /// <summary>
-        /// Sends an HTTP request message and returns the result.
-        /// </summary>
-        /// <param name="request">The http request to send.</param>
-        /// <param name="cancellationToken">The cancellation token.</param>
-        protected async Task<HttpResponseMessage> SendRequestAsync(HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            using (var httpClient = this.httpClientHelper.CreateHttpClient())
-            {
-                try
-                {
-                    var response = await httpClient
-                        .SendAsync(request: request, cancellationToken: cancellationToken)
-                        .ConfigureAwait(continueOnCapturedContext: false);
-
-                    if (!response.StatusCode.IsSuccessfulRequest())
-                    {
-                        var errorResponse = await ResourceManagerRestClientBase
-                            .TryReadErrorResponseMessage(response, rewindContentStream: true)
-                            .ConfigureAwait(continueOnCapturedContext: false);
-
-                        var message = await ResourceManagerRestClientBase
-                            .GetErrorMessage(request: request, response: response, errorResponse: errorResponse)
-                            .ConfigureAwait(continueOnCapturedContext: false);
-
-                        throw new ErrorResponseMessageException(
-                            httpStatus: response.StatusCode,
-                            errorResponseMessage: errorResponse,
-                            errorMessage: message);
-                    }
-
-                    return response;
-                }
-                catch (Exception exception)
-                {
-                    if (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested)
-                    {
-                        throw new Exception(ProjectResources.OperationFailedWithTimeOut);
-                    }
-
-                    throw;
-                }
-            }
-        }
+        public string Location { get; set; }
     }
 
 }
