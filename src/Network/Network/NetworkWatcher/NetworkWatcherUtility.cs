@@ -1,8 +1,5 @@
-﻿
-
-using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
+﻿using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
 using Microsoft.Rest;
-using Microsoft.WindowsAzure.Commands.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,10 +14,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
-using System.Collections;
 using System.Globalization;
-using System.Management.Automation;
-using System.Reflection;
 using System.Xml;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -911,8 +905,6 @@ namespace Microsoft.Azure.Commands.Network
 
             return new Uri(baseUri: this.EndpointUri, relativeUri: relativeUri);
         }
-
-
     }
 
     public class ResourceManagerRestClientBase

@@ -18,9 +18,6 @@
     using Newtonsoft.Json.Linq;
     using System.Threading.Tasks;
     using System.Threading;
-    using System.Text;
-    using System.Net.Http;
-    using System.Dynamic;
     using Microsoft.Azure.Management.Network.Models;
     using Microsoft.Azure.Commands.Common.Strategies;
     using Microsoft.Azure.Management.Network;
@@ -97,8 +94,8 @@
             // Fetch all Subscriptions
             IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
             IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
-            WriteObject(allCmHasMMAWorkspaceMachine);
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
+            WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.ToList(), Formatting.None)}", new string[] { "PSHOST" });
 
             // For Query for ARG
             // this.QueryForArg(this.Query);
@@ -118,11 +115,9 @@
 
         public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
         {
-            List<ResponseWithContinuation<JObject[]>> cmResourceObjects = new List<ResponseWithContinuation<JObject[]>>();
             var tenantId = DefaultContext.Tenant.Id;
             return ListAllSubscriptionsForTenant(tenantId);
         }
-
 
         /// <summary>
         /// 
@@ -135,6 +130,7 @@
             {
                 cmResourceObjects.Add(await ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""));
             }
+
             return ExtractCmResourceDetails(cmResourceObjects);
         }
 
@@ -143,17 +139,41 @@
         /// </summary>
         /// <param name="connectionMonitors">Basic details of CM like id, name , location, type</param>
         /// <param name="endpointType">endpointType = MMAWorkspaceMachine</param>
-        public List<ConnectionMonitorResult> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType)
+        public async Task<List<ConnectionMonitorResult>> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType)
         {
             List<ConnectionMonitorResult> listCM = new List<ConnectionMonitorResult>();
-
             foreach (var cm in connectionMonitors)
             {
-                var cmBasicDetails = this.GetConnectionMonitorDetails(cm.Id);
-                listCM.Add(this.ConnectionMonitors.Get(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
+                string subscriptionId = GetSubscriptionIdByResourceId(cm.Id);
+                // Need to discuss, only changing subsid client.SetCurrentContext(subscriptionId, Tenant, name);
+                if (DefaultContext.Subscription.Id != subscriptionId)
+                {
+                    DefaultContext.Subscription.Id = subscriptionId;
+                    this.NetworkClient = new NetworkClient(DefaultContext);
+                }
+                ConnectionMonitorDetails cmBasicDetails = this.GetConnectionMonitorDetails(cm.Id);
+                // WriteInformation($"{JsonConvert.SerializeObject(cmBasicDetails, Formatting.None)} and Subscription {subscriptionId}", new string[] { "PSHOST" });
+                listCM.Add(await this.ConnectionMonitors.GetAsync(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
             }
 
             return listCM.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
+        }
+
+        /// <summary>
+        /// Get the subscription id from resource id
+        /// </summary>
+        /// <param name="resourceId">resource id</param>
+        /// <returns>subscription id</returns>
+        /// <exception cref="ArgumentException"></exception>
+        private static string GetSubscriptionIdByResourceId(string resourceId)
+        {
+            string[] array = resourceId.Split(new char[1] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (array.Length < 8)
+            {
+                throw new ArgumentException("Invalid format of the resource identifier.", "idFromServer");
+            }
+
+            return array[1];
         }
 
         private IAccessToken AcquireAccessToken(
@@ -181,7 +201,6 @@
                 _cache,
                 resourceId);
         }
-
 
         private IEnumerable<AzureSubscription> ListAllSubscriptionsForTenant(
           string tenantId)
@@ -379,6 +398,8 @@
         public string Type { get; set; }
 
         public string Location { get; set; }
+
+        public AzureSubscription SubscriptionDetail { get; set; }
     }
 
 }
