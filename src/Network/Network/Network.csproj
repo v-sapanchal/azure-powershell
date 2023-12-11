@@ -47,6 +47,10 @@
     <ProjectReference Include="..\..\Accounts\Accounts\Accounts.csproj" />
     <ProjectReference Include="..\Network.Management.Sdk\Network.Management.Sdk.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Update="Azure.Core" Version="1.36.0" />
+  </ItemGroup>
 
   <Import Project="$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory).., build.proj))\src\Az.Post.props" />
 

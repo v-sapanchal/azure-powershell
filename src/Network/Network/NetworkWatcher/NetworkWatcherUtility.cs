@@ -21,11 +21,17 @@ using System.Runtime.InteropServices;
 using System.Security;
 using Formatting = Newtonsoft.Json.Formatting;
 using Microsoft.Azure.Commands.ResourceManager.Common;
+using Microsoft.Azure.Management.Network.Models;
+using Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos;
+using Microsoft.Rest.Serialization;
+using System.Management.Automation;
+using static Microsoft.Azure.Commands.Network.PSQueryResponse;
 
 namespace Microsoft.Azure.Commands.Network
 {
     public class NetworkWatcherUtility
     {
+
         /// <summary>
         /// Processes the parameters to return a valid resource Id.
         /// </summary>
@@ -92,7 +98,491 @@ namespace Microsoft.Azure.Commands.Network
 
             return resourceId.ToString();
         }
+
     }
+
+    public static class OperationalInsightsDataClientExtensions
+    {
+        public static OperationalInsightsQueryResults Query(this OperationalInsightsDataClient operations, string query, TimeSpan? timespan = null, IList<string> workspaces = null)
+        {
+            return operations.QueryAsync(query, timespan, workspaces).GetAwaiter().GetResult();
+        }
+
+        public static async Task<OperationalInsightsQueryResults> QueryAsync(this OperationalInsightsDataClient operations, string query, TimeSpan? timespan = null, IList<string> workspaces = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            using (HttpOperationResponse<OperationalInsightsQueryResults> httpOperationResponse = await operations.QueryWithHttpMessagesAsync(query, timespan, workspaces, null, cancellationToken).ConfigureAwait(continueOnCapturedContext: false))
+            {
+                return httpOperationResponse.Body;
+            }
+        }
+    }
+
+    public class OperationalInsightsDataClient : Rest.ServiceClient<OperationalInsightsDataClient>
+    {
+        public Uri BaseUri { get; set; }
+        public JsonSerializerSettings SerializationSettings { get; private set; }
+        public JsonSerializerSettings DeserializationSettings { get; private set; }
+        public ServiceClientCredentials Credentials { get; private set; }
+
+        public string WorkspaceId { get; set; }
+
+        public ApiPreferences Preferences { get; set; } = new ApiPreferences();
+
+        public string NameHeader { get; set; }
+
+        public string RequestId { get; set; }
+
+        public OperationalInsightsDataClient(ServiceClientCredentials credentials)
+            : this(credentials, (DelegatingHandler[])null)
+        {
+        }
+
+        public OperationalInsightsDataClient(ServiceClientCredentials credentials, params DelegatingHandler[] handlers)
+            : this(handlers)
+        {
+            if (credentials == null)
+            {
+                throw new ArgumentNullException("credentials");
+            }
+
+            Credentials = credentials;
+            if (Credentials != null)
+            {
+                Credentials.InitializeServiceClient(this);
+            }
+        }
+
+        protected OperationalInsightsDataClient(params DelegatingHandler[] handlers)
+          : base(handlers)
+        {
+            Initialize();
+        }
+
+        private void CustomInitialize()
+        {
+            DelegatingHandler delegatingHandler = base.FirstMessageHandler as DelegatingHandler;
+            if (delegatingHandler != null)
+            {
+                CustomDelegatingHandler customDelegatingHandler = (CustomDelegatingHandler)(delegatingHandler.InnerHandler = new CustomDelegatingHandler
+                {
+                    InnerHandler = delegatingHandler.InnerHandler,
+                    Client = this
+                });
+            }
+        }
+
+        private void Initialize()
+        {
+            BaseUri = new Uri("https://api.loganalytics.io/v1");
+            SerializationSettings = new JsonSerializerSettings
+            {
+                Formatting = Formatting.Indented,
+                DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                DateTimeZoneHandling = DateTimeZoneHandling.Utc,
+                NullValueHandling = NullValueHandling.Ignore,
+                ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
+                ContractResolver = new ReadOnlyJsonContractResolver(),
+                Converters = new List<JsonConverter>
+                {
+                    new Iso8601TimeSpanConverter()
+                }
+            };
+            DeserializationSettings = new JsonSerializerSettings
+            {
+                DateFormatHandling = DateFormatHandling.IsoDateFormat,
+                DateTimeZoneHandling = DateTimeZoneHandling.Utc,
+                NullValueHandling = NullValueHandling.Ignore,
+                ReferenceLoopHandling = ReferenceLoopHandling.Serialize,
+                ContractResolver = new ReadOnlyJsonContractResolver(),
+                Converters = new List<JsonConverter>
+                {
+                    new Iso8601TimeSpanConverter()
+                }
+            };
+            CustomInitialize();
+        }
+
+        public async Task<HttpOperationResponse<OperationalInsightsQueryResults>> QueryWithHttpMessagesAsync(string query, TimeSpan? timespan = null, IList<string> workspaces = null, Dictionary<string, List<string>> customHeaders = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            if (WorkspaceId == null)
+            {
+                throw new ValidationException(ValidationRules.CannotBeNull, "this.WorkspaceId");
+            }
+
+            if (query == null)
+            {
+                throw new ValidationException(ValidationRules.CannotBeNull, "query");
+            }
+
+            QueryBody queryBody = new QueryBody();
+            if (query != null || timespan.HasValue || workspaces != null)
+            {
+                queryBody.Query = query;
+                queryBody.Timespan = timespan;
+                queryBody.Workspaces = workspaces;
+            }
+
+            bool _shouldTrace = ServiceClientTracing.IsEnabled;
+            string _invocationId = null;
+            if (_shouldTrace)
+            {
+                _invocationId = ServiceClientTracing.NextInvocationId.ToString();
+                Dictionary<string, object> dictionary = new Dictionary<string, object>();
+                dictionary.Add("body", queryBody);
+                dictionary.Add("cancellationToken", cancellationToken);
+                ServiceClientTracing.Enter(_invocationId, this, "Query", dictionary);
+            }
+
+            string absoluteUri = BaseUri.AbsoluteUri;
+            string text = new Uri(new Uri(absoluteUri + (absoluteUri.EndsWith("/") ? "" : "/")), "workspaces/{workspaceId}/query").ToString();
+            text = text.Replace("{workspaceId}", Uri.EscapeDataString(WorkspaceId));
+            HttpRequestMessage _httpRequest = new HttpRequestMessage
+            {
+                Method = new HttpMethod("POST"),
+                RequestUri = new Uri(text)
+            };
+            if (customHeaders != null)
+            {
+                foreach (KeyValuePair<string, List<string>> customHeader in customHeaders)
+                {
+                    if (_httpRequest.Headers.Contains(customHeader.Key))
+                    {
+                        _httpRequest.Headers.Remove(customHeader.Key);
+                    }
+
+                    _httpRequest.Headers.TryAddWithoutValidation(customHeader.Key, customHeader.Value);
+                }
+            }
+
+            string _requestContent = null;
+            if (queryBody != null)
+            {
+                _requestContent = SafeJsonConvert.SerializeObject(queryBody, SerializationSettings);
+                _httpRequest.Content = new StringContent(_requestContent, Encoding.UTF8);
+                _httpRequest.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json; charset=utf-8");
+            }
+
+            if (Credentials != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await Credentials.ProcessHttpRequestAsync(_httpRequest, cancellationToken).ConfigureAwait(continueOnCapturedContext: false);
+            }
+
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.SendRequest(_invocationId, _httpRequest);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            HttpResponseMessage _httpResponse = await base.HttpClient.SendAsync(_httpRequest, cancellationToken).ConfigureAwait(continueOnCapturedContext: false);
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.ReceiveResponse(_invocationId, _httpResponse);
+            }
+
+            HttpStatusCode statusCode = _httpResponse.StatusCode;
+            cancellationToken.ThrowIfCancellationRequested();
+            string _responseContent2 = null;
+            if (statusCode != HttpStatusCode.OK)
+            {
+                ErrorResponseException ex = new ErrorResponseException($"Operation returned an invalid status code '{statusCode}'");
+                try
+                {
+                    _responseContent2 = await _httpResponse.Content.ReadAsStringAsync().ConfigureAwait(continueOnCapturedContext: false);
+                    ErrorResponse errorResponse = SafeJsonConvert.DeserializeObject<ErrorResponse>(_responseContent2, DeserializationSettings);
+                    if (errorResponse != null)
+                    {
+                        ex.Body = errorResponse;
+                    }
+                }
+                catch (JsonException)
+                {
+                }
+
+                ex.Request = new HttpRequestMessageWrapper(_httpRequest, _requestContent);
+                ex.Response = new HttpResponseMessageWrapper(_httpResponse, _responseContent2);
+                if (_shouldTrace)
+                {
+                    ServiceClientTracing.Error(_invocationId, ex);
+                }
+
+                _httpRequest.Dispose();
+                _httpResponse?.Dispose();
+                throw ex;
+            }
+
+            HttpOperationResponse<OperationalInsightsQueryResults> _result = new HttpOperationResponse<OperationalInsightsQueryResults>
+            {
+                Request = _httpRequest,
+                Response = _httpResponse
+            };
+            if (statusCode == HttpStatusCode.OK)
+            {
+                _responseContent2 = await _httpResponse.Content.ReadAsStringAsync().ConfigureAwait(continueOnCapturedContext: false);
+                try
+                {
+                    _result.Body = SafeJsonConvert.DeserializeObject<OperationalInsightsQueryResults>(_responseContent2, DeserializationSettings);
+                }
+                catch (JsonException innerException)
+                {
+                    _httpRequest.Dispose();
+                    _httpResponse?.Dispose();
+                    throw new SerializationException("Unable to deserialize the response.", _responseContent2, innerException);
+                }
+            }
+
+            if (_shouldTrace)
+            {
+                ServiceClientTracing.Exit(_invocationId, _result);
+            }
+
+            return _result;
+        }
+    }
+
+    public class ApiKeyClientCredentials : ServiceClientCredentials
+    {
+        private string token;
+
+        public ApiKeyClientCredentials(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                throw new ArgumentException("token must not be null or empty");
+            }
+
+            this.token = token;
+        }
+
+        public override Task ProcessHttpRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.Headers.Add("x-api-key", token);
+            return Task.FromResult(result: true);
+        }
+    }
+
+    public class ApiPreferences
+    {
+        public bool IncludeRender { get; set; }
+
+        public bool IncludeStatistics { get; set; }
+
+        public int Wait { get; set; } = int.MinValue;
+
+
+        public override string ToString()
+        {
+            string text = "response-v1=true";
+            if (IncludeRender)
+            {
+                text += ",include-render=true";
+            }
+
+            if (IncludeStatistics)
+            {
+                text += ",include-statistics=true";
+            }
+
+            if (Wait != int.MinValue)
+            {
+                text += $",wait={Wait}";
+            }
+
+            return text;
+        }
+    }
+
+    internal class CustomDelegatingHandler : DelegatingHandler
+    {
+        internal const string InternalNameHeader = "csharpsdk";
+
+        internal OperationalInsightsDataClient Client { get; set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            string text = "csharpsdk";
+            if (!string.IsNullOrWhiteSpace(Client.NameHeader))
+            {
+                text = text + "," + Client.NameHeader;
+            }
+
+            request.Headers.Add("prefer", Client.Preferences.ToString());
+            request.Headers.Add("x-ms-app", text);
+            request.Headers.Add("x-ms-client-request-id", Client.RequestId ?? Guid.NewGuid().ToString());
+            return await base.SendAsync(request, cancellationToken).ConfigureAwait(continueOnCapturedContext: false);
+        }
+    }
+
+    public class PSQueryResponse
+    {
+        // Private constructor so no one else can make one
+        //private PSQueryResponse() { }
+
+        public static PSQueryResponse Create(OperationalInsightsQueryResults response)
+        {
+            PSQueryResponse pSQueryResponse = new PSQueryResponse();
+            pSQueryResponse.Results = GetResultEnumerable(response.Results);
+            pSQueryResponse.Render = response.Render;
+            pSQueryResponse.Statistics = response.Statistics;
+            pSQueryResponse.Error = response.Error;
+            return pSQueryResponse;
+        }
+
+        public IEnumerable<PSObject> Results { get; set; }
+        public IDictionary<string, string> Render { get; set; }
+        public IDictionary<string, object> Statistics { get; set; }
+        public QueryResponseError Error { get; set; }
+
+        private static IEnumerable<PSObject> GetResultEnumerable(IEnumerable<IDictionary<string, string>> rows)
+        {
+            foreach (var row in rows)
+            {
+                var psObject = new PSObject();
+                foreach (var cell in row)
+                {
+                    psObject.Properties.Add(new PSNoteProperty(cell.Key, cell.Value));
+                }
+                yield return psObject;
+            }
+        }
+
+        public class OperationalInsightsQueryResults
+        {
+            [JsonProperty(PropertyName = "results")]
+            public IEnumerable<IDictionary<string, string>> Results
+            {
+                get
+                {
+                    foreach (Table table in Tables)
+                    {
+                        foreach (IList<string> row in table.Rows)
+                        {
+                            yield return table.Columns.Zip(row, (Column column, string cell) => new { column.Name, cell }).ToDictionary(entry => entry.Name, entry => entry.cell);
+                        }
+                    }
+                }
+            }
+
+            public IDictionary<string, string> Render { get; set; }
+
+            public IDictionary<string, object> Statistics { get; set; }
+
+            public QueryResponseError Error { get; set; }
+
+            [JsonProperty(PropertyName = "tables")]
+            public IList<Table> Tables { get; set; }
+
+            public OperationalInsightsQueryResults()
+            {
+            }
+
+            public OperationalInsightsQueryResults(IList<Table> tables)
+            {
+                Tables = tables;
+            }
+
+            public virtual void Validate()
+            {
+                if (Tables == null)
+                {
+                    throw new ValidationException(ValidationRules.CannotBeNull, "Tables");
+                }
+
+                if (Tables == null)
+                {
+                    return;
+                }
+
+                foreach (Table table in Tables)
+                {
+                    table?.Validate();
+                }
+            }
+        }
+
+        public class Table
+        {
+            [JsonProperty(PropertyName = "name")]
+            public string Name { get; set; }
+
+            [JsonProperty(PropertyName = "columns")]
+            public IList<Column> Columns { get; set; }
+
+            [JsonProperty(PropertyName = "rows")]
+            public IList<IList<string>> Rows { get; set; }
+
+            public Table()
+            {
+            }
+
+            public Table(string name, IList<Column> columns, IList<IList<string>> rows)
+            {
+                Name = name;
+                Columns = columns;
+                Rows = rows;
+            }
+
+            public virtual void Validate()
+            {
+                if (Name == null)
+                {
+                    throw new ValidationException(ValidationRules.CannotBeNull, "Name");
+                }
+
+                if (Columns == null)
+                {
+                    throw new ValidationException(ValidationRules.CannotBeNull, "Columns");
+                }
+
+                if (Rows == null)
+                {
+                    throw new ValidationException(ValidationRules.CannotBeNull, "Rows");
+                }
+            }
+        }
+
+        public class Column
+        {
+            [JsonProperty(PropertyName = "name")]
+            public string Name { get; set; }
+
+            [JsonProperty(PropertyName = "type")]
+            public string Type { get; set; }
+
+            public Column()
+            {
+            }
+
+            public Column(string name = null, string type = null)
+            {
+                Name = name;
+                Type = type;
+            }
+        }
+
+        public class QueryResponseError
+        {
+            public string Code { get; set; }
+
+            public List<QueryResponseError> Details { get; set; }
+
+            public string Message { get; set; }
+
+            public QueryResponseInnerError InnerError { get; set; }
+        }
+
+        public class QueryResponseInnerError
+        {
+            public int Severity { get; set; }
+
+            public string SeverityName { get; set; }
+
+            public string Message { get; set; }
+
+            public string Code { get; set; }
+        }
+    }
+
 
     /// <summary>
     /// The authentication handler.
@@ -1125,6 +1615,37 @@ namespace Microsoft.Azure.Commands.Network
             }
 
             return resourceId.ToString();
+        }
+    }
+
+    public class QueryBody
+    {
+        [JsonProperty(PropertyName = "query")]
+        public string Query { get; set; }
+
+        [JsonProperty(PropertyName = "timespan")]
+        public TimeSpan? Timespan { get; set; }
+
+        [JsonProperty(PropertyName = "workspaces")]
+        public IList<string> Workspaces { get; set; }
+
+        public QueryBody()
+        {
+        }
+
+        public QueryBody(string query, TimeSpan? timespan = null, IList<string> workspaces = null)
+        {
+            Query = query;
+            Timespan = timespan;
+            Workspaces = workspaces;
+        }
+
+        public virtual void Validate()
+        {
+            if (Query == null)
+            {
+                throw new ValidationException(ValidationRules.CannotBeNull, "Query");
+            }
         }
     }
 }

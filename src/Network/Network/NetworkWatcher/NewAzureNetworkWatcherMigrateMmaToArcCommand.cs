@@ -21,6 +21,9 @@
     using Microsoft.Azure.Management.Network.Models;
     using Microsoft.Azure.Commands.Common.Strategies;
     using Microsoft.Azure.Management.Network;
+    using Microsoft.Azure.Commands.ResourceManager;
+    using Microsoft.Rest;
+    using System.Net;
 
     [Cmdlet("New", ResourceManager.Common.AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
@@ -63,6 +66,60 @@
             set;
         }
 
+        private OperationalInsightsDataClient _operationalInsightsDataClient;
+        private const string ParamSetNameByWorkspaceId = "ByWorkspaceId";
+        private const string ParamSetNameByWorkspaceObject = "ByWorkspaceObject";
+
+        [Parameter(Mandatory = true, ParameterSetName = ParamSetNameByWorkspaceId, HelpMessage = "The workspace ID.")]
+        [ValidateNotNullOrEmpty]
+        public string WorkspaceId { get; set; }
+
+        internal OperationalInsightsDataClient OperationalInsightsDataClient
+        {
+            get
+            {
+                if (this._operationalInsightsDataClient == null)
+                {
+                    ServiceClientCredentials clientCredentials = null;
+                    if (ParameterSetName == ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
+                    {
+                        clientCredentials = new ApiKeyClientCredentials("DEMO_KEY");
+                    }
+                    else
+                    {
+                        clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
+                    }
+
+                    this._operationalInsightsDataClient =
+                        AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
+                    this._operationalInsightsDataClient.Preferences.IncludeRender = false;
+                    this._operationalInsightsDataClient.Preferences.IncludeStatistics = false;
+                    this._operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
+
+                    Uri targetUri = null;
+                    DefaultContext.Environment.TryGetEndpointUrl(
+                        AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint, out targetUri);
+                    if (targetUri == null)
+                    {
+                        throw new Exception("Operational Insights is not supported in this Azure Environment");
+                    }
+
+                    this._operationalInsightsDataClient.BaseUri = targetUri;
+
+                    if (targetUri.AbsoluteUri.Contains("localhost"))
+                    {
+                        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+                    }
+                }
+
+                return this._operationalInsightsDataClient;
+            }
+            set
+            {
+                this._operationalInsightsDataClient = value;
+            }
+        }
+
         ///// <summary>
         ///// Gets or sets the Work Space Id.
         ///// </summary>sub
@@ -94,11 +151,14 @@
             // Fetch all Subscriptions
             IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
             IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
-            WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.ToList(), Formatting.None)}", new string[] { "PSHOST" });
+            //IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
+            //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
 
             // For Query for ARG
             // this.QueryForArg(this.Query);
+
+            // For LA work space logs query
+            this.QueryForLaWorkSpace(this.Query);
         }
 
         public void QueryForArg(string query)
@@ -111,6 +171,17 @@
             QueryResponse response = rgClient.Resources(request);
             var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
             WriteObject(data);
+        }
+
+        public void QueryForLaWorkSpace(string query)
+        {
+            IList<string> workspaces = new List<string>() { this.WorkspaceId };
+
+            OperationalInsightsDataClient.WorkspaceId = this.WorkspaceId;
+            var data = OperationalInsightsDataClient.Query(query, null, workspaces);
+            var resultData = data.Results;
+            //var tabularFormatData = PSQueryResponse.Create(data);
+            WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
         }
 
         public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
