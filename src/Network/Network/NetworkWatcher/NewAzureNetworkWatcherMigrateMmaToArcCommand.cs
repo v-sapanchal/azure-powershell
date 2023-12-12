@@ -21,14 +21,15 @@
     using Microsoft.Azure.Management.Network.Models;
     using Microsoft.Azure.Commands.Common.Strategies;
     using Microsoft.Azure.Management.Network;
-    using Microsoft.Azure.Commands.ResourceManager;
     using Microsoft.Rest;
     using System.Net;
+    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter;
+    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.LAWorkSpace;
 
-    [Cmdlet("New", ResourceManager.Common.AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
+    [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
     {
-        public Action<string> WarningLog;
+        private Action<string> WarningLog;
         private IAzureTokenCache _cache;
         private IProfileOperations _profile;
 
@@ -37,43 +38,7 @@
         /// </summary>
         private CancellationTokenSource cancellationSource = null;
 
-        /// <summary>
-        /// Gets the cancellation source.
-        /// </summary>
-        protected CancellationToken? CancellationToken
-        {
-            get
-            {
-                return this.cancellationSource == null ? new CancellationTokenSource().Token : (CancellationToken?)this.cancellationSource.Token;
-            }
-        }
-
-        public ISubscriptionClientWrapper SubscriptionAndTenantClient = null;
-
-        /// <summary>
-        /// The endpoint that this client will communicate with.
-        /// </summary>
-        public Uri EndpointUri { get; set; }
-
-        /// <summary>
-        /// Gets or sets the query.
-        /// </summary>sub
-        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Resource Graph query")]
-        [AllowEmptyString]
-        public string Query
-        {
-            get;
-            set;
-        }
-
         private OperationalInsightsDataClient _operationalInsightsDataClient;
-        private const string ParamSetNameByWorkspaceId = "ByWorkspaceId";
-        private const string ParamSetNameByWorkspaceObject = "ByWorkspaceObject";
-
-        [Parameter(Mandatory = true, ParameterSetName = ParamSetNameByWorkspaceId, HelpMessage = "The workspace ID.")]
-        [ValidateNotNullOrEmpty]
-        public string WorkspaceId { get; set; }
-
         internal OperationalInsightsDataClient OperationalInsightsDataClient
         {
             get
@@ -81,7 +46,7 @@
                 if (this._operationalInsightsDataClient == null)
                 {
                     ServiceClientCredentials clientCredentials = null;
-                    if (ParameterSetName == ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
+                    if (ParameterSetName == CommonUtility.ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
                     {
                         clientCredentials = new ApiKeyClientCredentials("DEMO_KEY");
                     }
@@ -120,6 +85,40 @@
             }
         }
 
+        /// <summary>
+        /// Gets the cancellation source.
+        /// </summary>
+        internal CancellationToken? CancellationToken
+        {
+            get
+            {
+                return this.cancellationSource == null ? new CancellationTokenSource().Token : (CancellationToken?)this.cancellationSource.Token;
+            }
+        }
+
+        public ISubscriptionClientWrapper SubscriptionAndTenantClient = null;
+
+        /// <summary>
+        /// The endpoint that this client will communicate with.
+        /// </summary>
+        public Uri EndpointUri { get; set; }
+
+        /// <summary>
+        /// Gets or sets the query.
+        /// </summary>sub
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Resource Graph query")]
+        [AllowEmptyString]
+        public string Query
+        {
+            get;
+            set;
+        }
+
+        [Parameter(Mandatory = false, ParameterSetName = CommonUtility.ParamSetNameByWorkspaceId, HelpMessage = "The workspace ID.")]
+        [ValidateNotNullOrEmpty]
+        public string WorkspaceId { get; set; }
+
+
         ///// <summary>
         ///// Gets or sets the Work Space Id.
         ///// </summary>sub
@@ -151,17 +150,24 @@
             // Fetch all Subscriptions
             IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
             IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
-            //IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
             //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
+
+            // For LA work space logs query
+            this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
 
             // For Query for ARG
             // this.QueryForArg(this.Query);
-
-            // For LA work space logs query
-            this.QueryForLaWorkSpace(this.Query);
         }
 
-        public void QueryForArg(string query)
+
+        private void GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        {
+            var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Where(w => w.Endpoints.GroupBy(g => new { g.ResourceId, g.Address }).Select(g => g.First()).Any()).ToList();
+            var dictionary = mmaMachineCMs.SelectMany(m => m.Endpoints).GroupBy(e => new { e.Address, e.ResourceId }).ToDictionary(g => g.Key, g => g.First());
+        }
+
+        private void QueryForArg(string query)
         {
             ResourceGraphClient rgClient = AzureSession.Instance.ClientFactory.CreateArmClient<ResourceGraphClient>(DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
             QueryRequest request = new QueryRequest
@@ -173,15 +179,35 @@
             WriteObject(data);
         }
 
-        public void QueryForLaWorkSpace(string query)
+        /// <summary>
+        /// Query for La work space for getting data by passing the Query or using hardcoded one
+        /// </summary>
+        private void QueryForLaWorkSpace()
         {
             IList<string> workspaces = new List<string>() { this.WorkspaceId };
-
             OperationalInsightsDataClient.WorkspaceId = this.WorkspaceId;
-            var data = OperationalInsightsDataClient.Query(query, null, workspaces);
+            var data = OperationalInsightsDataClient.Query(this.Query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
             var resultData = data.Results;
             //var tabularFormatData = PSQueryResponse.Create(data);
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
+        }
+
+        private List<IDictionary<string, string>> QueryForLaWorkSpace(Dictionary<string, string> dictAddressToWorkSpaceId)
+        {
+            List<IDictionary<string, string>> arcResourceIdDetails = new List<IDictionary<string, string>>();
+            foreach (KeyValuePair<string, string> addressToWorkSpace in dictAddressToWorkSpaceId)
+            {
+                arcResourceIdDetails.AddRange(GetNetworkingDataAsync(addressToWorkSpace).GetAwaiter().GetResult());
+            }
+            return arcResourceIdDetails;
+        }
+
+        private async Task<IEnumerable<IDictionary<string, string>>> GetNetworkingDataAsync(KeyValuePair<string, string> addressToWorkSpace)
+        {
+            IList<string> workspaces = new List<string>() { addressToWorkSpace.Value };
+            OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.Value;
+            var data = await OperationalInsightsDataClient.QueryAsync(this.Query ?? string.Format(CommonUtility.Query, addressToWorkSpace.Key), CommonUtility.TimeSpanForLAQuery, workspaces);
+            return data.Results;
         }
 
         public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
@@ -457,20 +483,4 @@
             };
         }
     }
-
-    /// <summary>
-    /// Connection Monitor Resource Details
-    /// </summary>
-    public class ConnectionMonitorResourceDetail
-    {
-        public string Id { get; set; }
-        public string Name { get; set; }
-
-        public string Type { get; set; }
-
-        public string Location { get; set; }
-
-        public AzureSubscription SubscriptionDetail { get; set; }
-    }
-
 }
