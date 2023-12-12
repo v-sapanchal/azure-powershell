@@ -29,7 +29,7 @@
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
     {
-        private Action<string> WarningLog;
+
         private IAzureTokenCache _cache;
         private IProfileOperations _profile;
 
@@ -103,6 +103,8 @@
         /// </summary>
         public Uri EndpointUri { get; set; }
 
+        public Action<string> WarningLog;
+
         /// <summary>
         /// Gets or sets the query.
         /// </summary>sub
@@ -163,8 +165,8 @@
 
         private void GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
-            var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Where(w => w.Endpoints.GroupBy(g => new { g.ResourceId, g.Address }).Select(g => g.First()).Any()).ToList();
-            var dictionary = mmaMachineCMs.SelectMany(m => m.Endpoints).GroupBy(e => new { e.Address, e.ResourceId }).ToDictionary(g => g.Key, g => g.First());
+            var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Select(s => s.Endpoints.GroupBy(g => g.ResourceId).Select(g => g.First()).Where(a => a.Type == "MMAWorkspaceMachine"));
+            var data = QueryForLaWorkSpace(getDistinctWorkSpaceAndAddress?.SelectMany(s => s)?.Distinct());
         }
 
         private void QueryForArg(string query)
@@ -192,21 +194,21 @@
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
         }
 
-        private List<IDictionary<string, string>> QueryForLaWorkSpace(Dictionary<string, string> dictAddressToWorkSpaceId)
+        private List<IDictionary<string, string>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> AddressAndWorkSpaceIds)
         {
             List<IDictionary<string, string>> arcResourceIdDetails = new List<IDictionary<string, string>>();
-            foreach (KeyValuePair<string, string> addressToWorkSpace in dictAddressToWorkSpaceId)
+            foreach (var addressToWorkSpace in AddressAndWorkSpaceIds)
             {
                 arcResourceIdDetails.AddRange(GetNetworkingDataAsync(addressToWorkSpace).GetAwaiter().GetResult());
             }
             return arcResourceIdDetails;
         }
 
-        private async Task<IEnumerable<IDictionary<string, string>>> GetNetworkingDataAsync(KeyValuePair<string, string> addressToWorkSpace)
+        private async Task<IEnumerable<IDictionary<string, string>>> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
         {
-            IList<string> workspaces = new List<string>() { addressToWorkSpace.Value };
-            OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.Value;
-            var data = await OperationalInsightsDataClient.QueryAsync(this.Query ?? string.Format(CommonUtility.Query, addressToWorkSpace.Key), CommonUtility.TimeSpanForLAQuery, workspaces);
+            IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
+            OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
+            var data = await OperationalInsightsDataClient.QueryAsync(string.Format(CommonUtility.Query, addressToWorkSpace.Address), CommonUtility.TimeSpanForLAQuery, workspaces);
             return data.Results;
         }
 
