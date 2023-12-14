@@ -92,6 +92,52 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             return resourceId.ToString();
         }
+
+        public static string GetSubscription(string resourceUri)
+        {
+            return GetResourceValue(resourceUri, "/subscriptions");
+        }
+
+        public static string GetResourceValue(string resourceUri, string resourceName)
+        {
+            if (string.IsNullOrEmpty(resourceUri))
+            {
+                return null;
+            }
+
+            if (!resourceName.StartsWith("/"))
+            {
+                resourceName = "/" + resourceName;
+            }
+
+            if (!resourceUri.StartsWith("/"))
+            {
+                resourceUri = "/" + resourceUri;
+            }
+
+            string text = "/resourceGroups" + resourceName;
+            if (resourceUri.IndexOf(text, StringComparison.InvariantCultureIgnoreCase) != -1)
+            {
+                string text2 = resourceUri.ToLowerInvariant().Split(new string[1] { text.ToLowerInvariant() }, StringSplitOptions.None).Last();
+                int num = text2.IndexOf(resourceName, StringComparison.InvariantCultureIgnoreCase);
+                if (num != -1)
+                {
+                    return text2.Substring(num + resourceName.Length).Split('/')[1];
+                }
+            }
+
+            int num2 = resourceUri.IndexOf(resourceName, StringComparison.InvariantCultureIgnoreCase);
+            if (num2 != -1)
+            {
+                string[] array = resourceUri.Substring(num2 + resourceName.Length).Split('/');
+                if (array.Length > 1)
+                {
+                    return array[1];
+                }
+            }
+
+            return null;
+        }
     }
 
     /// <summary>
@@ -935,7 +981,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             JObject content,
             CancellationToken cancellationToken)
         {
-            using (var response = await 
+            using (var response = await
                 SendRequestAsync(httpMethod: httpMethod, requestUri: requestUri, content: content, cancellationToken: cancellationToken)
                 .ConfigureAwait(continueOnCapturedContext: false))
             {
@@ -992,7 +1038,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             Uri requestUri,
             CancellationToken cancellationToken)
         {
-            using (var response = await 
+            using (var response = await
                 SendRequestAsync(httpMethod: httpMethod, requestUri: requestUri, cancellationToken: cancellationToken)
                 .ConfigureAwait(continueOnCapturedContext: false))
             {

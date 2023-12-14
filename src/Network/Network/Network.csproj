@@ -45,6 +45,7 @@
   
   <ItemGroup>
     <ProjectReference Include="..\..\Accounts\Accounts\Accounts.csproj" />
+    <ProjectReference Include="..\..\OperationalInsights\OperationalInsights\OperationalInsights.csproj" />
     <ProjectReference Include="..\Network.Management.Sdk\Network.Management.Sdk.csproj" />
   </ItemGroup>
   

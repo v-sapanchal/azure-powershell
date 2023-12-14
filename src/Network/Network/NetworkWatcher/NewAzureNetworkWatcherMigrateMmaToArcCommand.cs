@@ -25,6 +25,7 @@
     using System.Net;
     using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter;
     using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.LAWorkSpace;
+    using Microsoft.Azure.Commands.OperationalInsights.Client;
 
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
@@ -82,6 +83,24 @@
             set
             {
                 this._operationalInsightsDataClient = value;
+            }
+        }
+
+        private OperationalInsightsClient operationalInsightsClient;
+        internal OperationalInsightsClient OperationalInsightsClient
+        {
+            get
+            {
+                if (this.operationalInsightsClient == null)
+                {
+                    this.operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
+                }
+
+                return this.operationalInsightsClient;
+            }
+            set
+            {
+                this.operationalInsightsClient = value;
             }
         }
 
@@ -154,19 +173,19 @@
             IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
             IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
             //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
-
             // For LA work space logs query
+            //this.QueryForLaWorkSpace();
             this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
-
             // For Query for ARG
             // this.QueryForArg(this.Query);
         }
 
-
-        private void GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        private List<OperationalInsightsQueryResults> GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
             var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Select(s => s.Endpoints.GroupBy(g => g.ResourceId).Select(g => g.First()).Where(a => a.Type == "MMAWorkspaceMachine"));
-            var data = QueryForLaWorkSpace(getDistinctWorkSpaceAndAddress?.SelectMany(s => s)?.Distinct());
+            var allDistintCMs = getDistinctWorkSpaceAndAddress?.SelectMany(s => s)?.Distinct().Where(w => w.ResourceId == "/subscriptions/9cece3e3-0f7d-47ca-af0e-9772773f90b7/resourceGroups/vakarana-rg/providers/Microsoft.OperationalInsights/workspaces/vakarana-WCUS-Dev");
+            var data = QueryForLaWorkSpace(allDistintCMs).GetAwaiter().GetResult();
+            return data;
         }
 
         private void QueryForArg(string query)
@@ -194,23 +213,45 @@
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
         }
 
-        private List<IDictionary<string, string>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> AddressAndWorkSpaceIds)
+        private async Task<List<OperationalInsightsQueryResults>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> AddressAndWorkSpaceIds)
         {
-            List<IDictionary<string, string>> arcResourceIdDetails = new List<IDictionary<string, string>>();
-            foreach (var addressToWorkSpace in AddressAndWorkSpaceIds)
-            {
-                arcResourceIdDetails.AddRange(GetNetworkingDataAsync(addressToWorkSpace).GetAwaiter().GetResult());
-            }
-            return arcResourceIdDetails;
+            var arcResourceIdDetails = AddressAndWorkSpaceIds.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
+                .Where(networkingData => networkingData != null).ToList();
+
+            var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
+            return getAllArcResourceDetails.ToList();
         }
 
-        private async Task<IEnumerable<IDictionary<string, string>>> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
+        private async Task<OperationalInsightsQueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
         {
-            IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
-            OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
-            var data = await OperationalInsightsDataClient.QueryAsync(string.Format(CommonUtility.Query, addressToWorkSpace.Address), CommonUtility.TimeSpanForLAQuery, workspaces);
-            return data.Results;
+            try
+            {
+                IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
+                string subscriptionId = NetworkWatcherUtility.GetSubscription(addressToWorkSpace.ResourceId);
+                string workSpaceRG = NetworkWatcherUtility.GetResourceValue(addressToWorkSpace.ResourceId, "/resourceGroups");
+                var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
+
+                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace.ResourceId)) return null;
+
+                if (DefaultContext.Subscription.Id != subscriptionId)
+                {
+                    DefaultContext.Subscription.Id = subscriptionId;
+                    this._operationalInsightsDataClient = null;
+                }
+
+                OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
+                string conditionWithAdressFqdn = $"and AgentFqdn == \"{addressToWorkSpace.Address}\"";
+                string query = this.Query; // ?? string.Format(CommonUtility.Query, conditionWithAdressFqdn);
+
+                return await OperationalInsightsDataClient.QueryAsync(query, null, workspaces);
+            }
+            catch (Exception ex)
+            {
+                WriteErrorWithTimestamp(ex.ToString());
+                return null;
+            }
         }
+
 
         public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
         {
