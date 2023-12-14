@@ -1,4 +1,6 @@
-﻿namespace Microsoft.Azure.Commands.Network
+﻿using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
+
+namespace Microsoft.Azure.Commands.Network
 {
     using System;
     using System.Collections.Generic;
@@ -26,6 +28,7 @@
     using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter;
     using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.LAWorkSpace;
     using Microsoft.Azure.Commands.OperationalInsights.Client;
+    using PaginatedResponseHelper = PaginatedResponseHelper;
 
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
@@ -170,7 +173,7 @@
 
             // Fetch all Subscriptions
             IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
-            IEnumerable<ConnectionMonitorResourceDetail> allCMs = await GetConnectionMonitorBySubscriptions(subscriptions, "");
+            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions, "");
             IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
             //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
             // For LA work space logs query
@@ -262,16 +265,43 @@
         /// <summary>
         /// 
         /// </summary>
-        public async Task<IEnumerable<ConnectionMonitorResourceDetail>> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList, string workSpaceId)
+        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList, string workSpaceId)
         {
             List<ResponseWithContinuation<JObject[]>> cmResourceObjects = new List<ResponseWithContinuation<JObject[]>>();
+            List<JObject> cmResources = new List<JObject>();
 
             foreach (var subs in subscriptionsList)
             {
-                cmResourceObjects.Add(await ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""));
+                PaginatedResponseHelper.ForEach(
+                getFirstPage: () => this.ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""),
+                getNextPage: nextLink => this.GetNextLink<JObject>(nextLink),
+                cancellationToken: this.CancellationToken,
+                action: resources =>
+                {
+                    CmResource<JToken> resource;
+                    if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out resource))
+                    {
+                        var genericResources = resources.CoalesceEnumerable().Where(res => res != null).SelectArray(res => res.ToResource());
+
+                        foreach (var batch in genericResources.Batch())
+                        {
+                            var items = batch;
+                            var powerShellObjects = items.SelectArray(genericResource => genericResource.ToJToken());
+                            // WriteInformation(JsonConvert.SerializeObject(powerShellObjects, Formatting.None), new string[] { "PSHOST" });
+                            cmResources.AddRange(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList());
+                        }
+                    }
+                    else
+                    {
+                        // WriteInformation(JsonConvert.SerializeObject(resources.CoalesceEnumerable().SelectArray(res => res), Formatting.None), new string[] { "PSHOST" });
+                        cmResources.AddRange(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList());
+                    }
+                });
+
+               // cmResourceObjects.Add(await ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""));
             }
 
-            return ExtractCmResourceDetails(cmResourceObjects);
+            return ExtractCmResourceDetails(cmResources);
         }
 
         /// <summary>
@@ -372,94 +402,23 @@
             }
         }
 
-        //public List<AzureTenant> ListTenants(string tenant = "")
-        //{
-        //    IList<AzureTenant> tenants = ListAccountTenants(DefaultContext.Account, DefaultContext.Environment, null, ShowDialog.Never, null);
-        //    return tenants.Where(t => string.IsNullOrEmpty(tenant) ||
-        //                                 tenant.Equals(t.Id.ToString(), StringComparison.OrdinalIgnoreCase) ||
-        //                                 Array.Exists(t.GetPropertyAsArray(AzureTenant.Property.Domains), e => tenant.Equals(e, StringComparison.OrdinalIgnoreCase)))
-        //                         .ToList();
-        //}
-
-        //private List<AzureTenant> ListAccountTenants(
-        //  IAzureAccount account,
-        //  IAzureEnvironment environment,
-        //  SecureString password,
-        //  string promptBehavior,
-        //  Action<string> promptAction)
-        //{
-        //    IList<AzureTenant> result = new List<AzureTenant>();
-        //    var commonTenant = account.GetCommonTenant();
-        //    try
-        //    {
-        //        var commonTenantToken = AcquireAccessToken(
-        //            account,
-        //            environment,
-        //            commonTenant,
-        //            password,
-        //            promptBehavior,
-        //            promptAction);
-
-        //        result =  SubscriptionAndTenantClient?.ListAccountTenants(commonTenantToken, environment);
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        WriteWarningMessage(string.Format(ProfileMessages.UnableToAqcuireToken, commonTenant, e.Message));
-        //        WriteDebugMessage(string.Format(ProfileMessages.UnableToAqcuireToken, commonTenant, e.ToString()));
-        //        if (account.IsPropertySet(AzureAccount.Property.Tenants))
-        //        {
-        //            result =
-        //                account.GetPropertyAsArray(AzureAccount.Property.Tenants)
-        //                    .Select(ti =>
-        //                    {
-        //                        var tenant = new AzureTenant();
-
-        //                        Guid guid;
-        //                        if (Guid.TryParse(ti, out guid))
-        //                        {
-        //                            tenant.Id = ti;
-        //                        }
-        //                        else
-        //                        {
-        //                            tenant.Directory = ti;
-        //                        }
-
-        //                        return tenant;
-        //                    }).ToList();
-        //        }
-        //        if (!result.Any())
-        //        {
-        //            throw;
-        //        }
-
-        //    }
-
-        //    return result.ToList();
-        //}
-
         /// <summary>
         /// 
         /// </summary>
         /// <param name="cmResourceObjects"></param>
         /// <returns></returns>
-        private static List<ConnectionMonitorResourceDetail> ExtractCmResourceDetails(List<ResponseWithContinuation<JObject[]>> cmResourceObjects)
+        private static List<ConnectionMonitorResourceDetail> ExtractCmResourceDetails(List<JObject> cmResourceObjects)
         {
             List<ConnectionMonitorResourceDetail> connectionMonitors = new List<ConnectionMonitorResourceDetail>();
-            cmResourceObjects.ForEach(sub =>
+            cmResourceObjects.ForEach(cm =>
             {
-                if (sub?.Value?.Length > 0)
+                connectionMonitors.Add(new ConnectionMonitorResourceDetail
                 {
-                    foreach (JObject cm in sub.Value)
-                    {
-                        connectionMonitors.Add(new ConnectionMonitorResourceDetail
-                        {
-                            Id = cm["id"].Value<string>(),
-                            Name = cm["name"].Value<string>(),
-                            Location = cm["location"].Value<string>(),
-                            Type = cm["type"].Value<string>()
-                        });
-                    }
-                }
+                    Id = cm["Id"]?.Value<string>(),
+                    Name = cm["Name"]?.Value<string>(),
+                    Location = cm["Location"]?.Value<string>(),
+                    Type = cm["Type"]?.Value<string>()
+                });
             });
 
             return connectionMonitors;
@@ -488,6 +447,17 @@
                     filter: filterQuery,
                     cancellationToken: this.CancellationToken.Value)
                 .ConfigureAwait(continueOnCapturedContext: false);
+        }
+
+        /// <summary>
+        /// Gets the next set of resources using the <paramref name="nextLink"/>
+        /// </summary>
+        /// <param name="nextLink">The next link.</param>
+        private Task<ResponseWithContinuation<TType[]>> GetNextLink<TType>(string nextLink)
+        {
+            return this
+                .GetResourcesClient()
+                .ListNextBatch<TType>(nextLink: nextLink, cancellationToken: this.CancellationToken.Value);
         }
 
         /// <summary>
