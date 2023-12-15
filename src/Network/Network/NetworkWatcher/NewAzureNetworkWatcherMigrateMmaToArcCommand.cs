@@ -178,17 +178,17 @@ namespace Microsoft.Azure.Commands.Network
             //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
             // For LA work space logs query
             //this.QueryForLaWorkSpace();
-            var allArcResources = this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
+            var allArcResources = await this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
+            WriteInformation($"{JsonConvert.SerializeObject(allArcResources.Where(w => w?.Tables?.Count > 0).ToList(), Formatting.None)}", new string[] { "PSHOST" });
             // For Query for ARG
             // this.QueryForArg(this.Query);
         }
 
-        private Task<List<OperationalInsightsQueryResults>> GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        private async Task<List<OperationalInsightsQueryResults>> GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
             var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Select(s => s.Endpoints.GroupBy(g => g.ResourceId).Select(g => g.First()).Where(a => a.Type == "MMAWorkspaceMachine"));
-            var allDistantCMEndpoints = getDistinctWorkSpaceAndAddress?.SelectMany(s => s)?.Distinct()?
-                .OrderBy(o => NetworkWatcherUtility.GetSubscription(o.ResourceId));
-            return QueryForLaWorkSpace(allDistantCMEndpoints);
+            var allDistantCMEndpoints = getDistinctWorkSpaceAndAddress?.SelectMany(s => s)?.Distinct();
+            return await QueryForLaWorkSpace(allDistantCMEndpoints);
         }
 
         private void QueryForArg(string query)
@@ -216,9 +216,21 @@ namespace Microsoft.Azure.Commands.Network
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
         }
 
-        private async Task<List<OperationalInsightsQueryResults>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> AddressAndWorkSpaceIds)
+        private async Task<List<OperationalInsightsQueryResults>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
         {
-            var arcResourceIdDetails = AddressAndWorkSpaceIds.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
+            //var getDistinctWorkSpaceAndAddress = mmaMachineCMs.
+            //Select(s => s.Endpoints.GroupBy(g => g.ResourceId).Select(g => g.First()).Where(a => a.Type == "MMAWorkspaceMachine"));
+            //.OrderBy(o => NetworkWatcherUtility.GetSubscription(o.ResourceId)).ThenBy(o => NetworkWatcherUtility.GetResourceValue(o.ResourceId, "/resourceGroups"));
+            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints
+                                             .GroupBy(g => new
+                                             {
+                                                 subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
+                                                 rg = NetworkWatcherUtility.GetResourceValue(g.ResourceId, "/resourceGroups")
+                                             })
+                                             .OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg)
+                                             .Select(g => g.First()).ToList();
+
+            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
                 .Where(networkingData => networkingData != null);
 
             var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
@@ -251,11 +263,11 @@ namespace Microsoft.Azure.Commands.Network
                 //string conditionWithAdressFqdn = $"and AgentFqdn == \"{addressToWorkSpace.Address}\"";
                 string query = this.Query; // ?? string.Format(CommonUtility.Query, conditionWithAdressFqdn);
 
-                return await OperationalInsightsDataClient.QueryAsync(query, null, workspaces);
+                return await OperationalInsightsDataClient.QueryAsync(query, CommonUtility.TimeSpanForLAQuery, workspaces);
             }
             catch (Exception ex)
             {
-                WriteErrorWithTimestamp(ex.ToString());
+                WriteInformation($"This is error while performing on this resource Id {addressToWorkSpace.ResourceId}, Error:  {ex}", new string[] { "PSHOST" });
                 return null;
             }
         }
