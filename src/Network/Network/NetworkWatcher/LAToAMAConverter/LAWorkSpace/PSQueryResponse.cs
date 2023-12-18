@@ -8,7 +8,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.LAWor
     public class PSQueryResponse
     {
         // Private constructor so no one else can make one
-        //private PSQueryResponse() { }
+        public PSQueryResponse() { }
 
         public static PSQueryResponse Create(OperationalInsightsQueryResults response)
         {
