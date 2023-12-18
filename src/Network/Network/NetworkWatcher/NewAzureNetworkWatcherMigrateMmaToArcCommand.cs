@@ -182,7 +182,8 @@ namespace Microsoft.Azure.Commands.Network
             // For LA work space logs query
             //this.QueryForLaWorkSpace();
             var allArcResources = await this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
-            WriteInformation($"{JsonConvert.SerializeObject(allArcResources.Where(w => w?.Tables?.Count > 0).ToList(), Formatting.None)}", new string[] { "PSHOST" });
+            var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
+            WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
             //WriteObject(allArcResources?.Where(w => w?.Tables?.Count > 0).Select(s => PSQueryResponse.Create(s)));
 
             // For Query for ARG
@@ -196,8 +197,6 @@ namespace Microsoft.Azure.Commands.Network
         /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
         private async Task<List<OperationalInsightsQueryResults>> GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
-            // Need to check the endpoints
-            //var getDistinctWorkSpaceAndAddress = mmaMachineCMs.Select(s => s.Endpoints.GroupBy(g => new { g.ResourceId, g.Address }).Select(g => g.Where(w => w.Type == "MMAWorkspaceMachine").FirstOrDefault()));
             var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
             var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == "MMAWorkspaceMachine"));
             var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
@@ -231,10 +230,7 @@ namespace Microsoft.Azure.Commands.Network
 
         private async Task<List<OperationalInsightsQueryResults>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
         {
-            //var getDistinctWorkSpaceAndAddress = mmaMachineCMs.
-            //Select(s => s.Endpoints.GroupBy(g => g.ResourceId).Select(g => g.First()).Where(a => a.Type == "MMAWorkspaceMachine"));
-            //.OrderBy(o => NetworkWatcherUtility.GetSubscription(o.ResourceId)).ThenBy(o => NetworkWatcherUtility.GetResourceValue(o.ResourceId, "/resourceGroups"));
-            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints
+            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
                                              .GroupBy(g => new
                                              {
                                                  subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
@@ -273,8 +269,7 @@ namespace Microsoft.Azure.Commands.Network
                 }
 
                 OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
-                //string conditionWithAdressFqdn = $"and AgentFqdn == \"{addressToWorkSpace.Address}\"";
-                string query = this.Query;  // ?? string.Format(CommonUtility.Query, conditionWithAdressFqdn);
+                string query = this.Query ?? CommonUtility.Query;
                 TimeSpan forQuery = TimespanInHrs == 0 ? CommonUtility.TimeSpanForLAQuery : TimeSpan.FromHours(TimespanInHrs);
                 return await OperationalInsightsDataClient.QueryAsync(query, CommonUtility.TimeSpanForLAQuery, workspaces);
             }
