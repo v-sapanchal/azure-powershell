@@ -13,7 +13,5 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         public string Type { get; set; }
 
         public string Location { get; set; }
-
-        public AzureSubscription SubscriptionDetail { get; set; }
     }
 }

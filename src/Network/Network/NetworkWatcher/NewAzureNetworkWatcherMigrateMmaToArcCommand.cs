@@ -1,6 +1,4 @@
-﻿using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
-
-namespace Microsoft.Azure.Commands.Network
+﻿namespace Microsoft.Azure.Commands.Network
 {
     using System;
     using System.Collections.Generic;
@@ -26,9 +24,11 @@ namespace Microsoft.Azure.Commands.Network
     using Microsoft.Rest;
     using System.Net;
     using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter;
-    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.LAWorkSpace;
     using Microsoft.Azure.Commands.OperationalInsights.Client;
-    using PaginatedResponseHelper = PaginatedResponseHelper;
+    using Microsoft.Azure.Commands.OperationalInsights;
+    using Microsoft.Azure.OperationalInsights;
+    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
+    using PaginatedResponseHelper = ResourceManager.Common.PaginatedResponseHelper;
 
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
@@ -52,7 +52,7 @@ namespace Microsoft.Azure.Commands.Network
                     ServiceClientCredentials clientCredentials = null;
                     if (ParameterSetName == CommonUtility.ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
                     {
-                        clientCredentials = new ApiKeyClientCredentials("DEMO_KEY");
+                        clientCredentials = new Azure.OperationalInsights.ApiKeyClientCredentials("DEMO_KEY");
                     }
                     else
                     {
@@ -176,18 +176,31 @@ namespace Microsoft.Azure.Commands.Network
 
             // Fetch all Subscriptions
             IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
-            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions, "");
+            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
             IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
-            //WriteInformation($"{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine.Select(s => s.Id).ToList(), Formatting.None)}", new string[] { "PSHOST" });
-            // For LA work space logs query
-            //this.QueryForLaWorkSpace();
-            var allArcResources = await this.GetArcResourceIds(allCmHasMMAWorkspaceMachine);
-            var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
-            WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
-            //WriteObject(allArcResources?.Where(w => w?.Tables?.Count > 0).Select(s => PSQueryResponse.Create(s)));
+            if (allCmHasMMAWorkspaceMachine?.Count() > 0)
+            {
+                WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
+                WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
+            }
+            else
+            {
+                WriteInformation($"Connection Monitors don't have any MMAWorkspace Endpoints.\n", new string[] { "PSHOST" });
+            }
 
-            // For Query for ARG
-            // this.QueryForArg(this.Query);
+            // For LA work space logs query
+            var allArcResources = await this.GetNetworkAgentLAWorkSpaceData(allCmHasMMAWorkspaceMachine);
+            var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
+            // WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
+
+            int noOfTakeResult = 100;
+            //Need to refactor this code for distinct resource Id
+            var getArcResourceIdsRows = allArcResourcesHasData.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
+            string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
+            string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
+
+            // For ARG Query to get the ARC resource details
+            this.QueryForArg(customQueryForArg);
         }
 
         /// <summary>
@@ -195,12 +208,12 @@ namespace Microsoft.Azure.Commands.Network
         /// </summary>
         /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints</param>
         /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
-        private async Task<List<OperationalInsightsQueryResults>> GetArcResourceIds(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
             var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
             var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == "MMAWorkspaceMachine"));
             var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
-            return await QueryForLaWorkSpace(getDistinctWorkSpaceAndAddress);
+            return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
         }
 
         private void QueryForArg(string query)
@@ -212,7 +225,7 @@ namespace Microsoft.Azure.Commands.Network
             };
             QueryResponse response = rgClient.Resources(request);
             var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
-            WriteObject(data);
+            WriteInformation($"Arc resources details:===============================\n{JsonConvert.SerializeObject(data, Formatting.Indented)}\n", new string[] { "PSHOST" });
         }
 
         /// <summary>
@@ -225,10 +238,10 @@ namespace Microsoft.Azure.Commands.Network
             var data = OperationalInsightsDataClient.Query(this.Query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
             var resultData = data.Results;
             //var tabularFormatData = PSQueryResponse.Create(data);
-            WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.None)}", new string[] { "PSHOST" });
+            WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
         }
 
-        private async Task<List<OperationalInsightsQueryResults>> QueryForLaWorkSpace(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
+        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
         {
             var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
                                              .GroupBy(g => new
@@ -246,7 +259,7 @@ namespace Microsoft.Azure.Commands.Network
             return getAllArcResourceDetails.ToList();
         }
 
-        private async Task<OperationalInsightsQueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
+        private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
         {
             try
             {
@@ -262,9 +275,9 @@ namespace Microsoft.Azure.Commands.Network
 
                 var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
 
-                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace.ResourceId))
+                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId))
                 {
-                    WriteInformation($"This Endpoint workspace doesn't exist: {JsonConvert.SerializeObject(addressToWorkSpace.ResourceId, Formatting.None)}", new string[] { "PSHOST" });
+                    WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
                     return null;
                 }
 
@@ -288,18 +301,18 @@ namespace Microsoft.Azure.Commands.Network
         }
 
         /// <summary>
-        /// 
+        /// Get All the connection Monitors under user context subscriptions
         /// </summary>
-        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList, string workSpaceId)
+        /// <param name="subscriptionsList">user context subscriptions</param>
+        /// <returns>collection of all the ConnectionMonitor Resource Detail</returns>
+        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList)
         {
-            List<ResponseWithContinuation<JObject[]>> cmResourceObjects = new List<ResponseWithContinuation<JObject[]>>();
-            List<JObject> cmResources = new List<JObject>();
             List<ConnectionMonitorResourceDetail> cmDetails = new List<ConnectionMonitorResourceDetail>();
 
             foreach (var subs in subscriptionsList)
             {
                 PaginatedResponseHelper.ForEach(
-                getFirstPage: async () => await this.ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""),
+                getFirstPage: async () => await this.ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
                 getNextPage: async nextLink => await this.GetNextLink<JObject>(nextLink),
                 cancellationToken: this.CancellationToken,
                 action: resources =>
@@ -313,21 +326,16 @@ namespace Microsoft.Azure.Commands.Network
                         {
                             var items = batch;
                             var powerShellObjects = items.SelectArray(genericResource => genericResource.ToJToken());
-                            // WriteInformation(JsonConvert.SerializeObject(powerShellObjects, Formatting.None), new string[] { "PSHOST" });
-                            // cmResources.AddRange(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList());
                             cmDetails.AddRange(ExtractCmResourceDetails(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList()));
-                            //cmResources.AddRange(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList());
+                            //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
                         }
                     }
                     else
                     {
-                        // WriteInformation(JsonConvert.SerializeObject(resources.CoalesceEnumerable().SelectArray(res => res), Formatting.None), new string[] { "PSHOST" });
                         cmDetails.AddRange(ExtractCmResourceDetails(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList()));
-                        //cmResources.AddRange(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList());
+                        //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
                     }
                 });
-
-                // cmResourceObjects.Add(await ListResourcesInSubscription(new Guid(subs.Id), "Microsoft.Network/networkWatchers/connectionMonitors", ""));
             }
 
             return cmDetails;
