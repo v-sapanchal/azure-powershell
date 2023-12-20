@@ -24,6 +24,9 @@ using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Management.Internal.Resources.Utilities.Models;
 using Microsoft.Azure.Management.Network;
 using Microsoft.Azure.Management.Network.Models;
+using Microsoft.Azure.Management.ResourceGraph.Models;
+using Microsoft.Azure.Management.ResourceGraph;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -34,6 +37,11 @@ using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using MNM = Microsoft.Azure.Management.Network.Models;
+using Microsoft.Azure.Management.OperationalInsights.Models;
+using Microsoft.Azure.OperationalInsights;
+using System.Collections;
+using Microsoft.Azure.Commands.OperationalInsights.Client;
+using Microsoft.Rest;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -50,6 +58,63 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             get
             {
                 return cancellationSource == null ? new CancellationTokenSource().Token : cancellationSource.Token;
+            }
+        }
+
+        private OperationalInsightsDataClient _operationalInsightsDataClient;
+        internal OperationalInsightsDataClient OperationalInsightsDataClient
+        {
+            get
+            {
+                if (_operationalInsightsDataClient == null)
+                {
+                    ServiceClientCredentials clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
+
+                    _operationalInsightsDataClient =
+                        AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
+                    _operationalInsightsDataClient.Preferences.IncludeRender = false;
+                    _operationalInsightsDataClient.Preferences.IncludeStatistics = false;
+                    _operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
+
+                    Uri targetUri = null;
+                    DefaultContext.Environment.TryGetEndpointUrl(
+                        AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint, out targetUri);
+                    if (targetUri == null)
+                    {
+                        throw new Exception("Operational Insights is not supported in this Azure Environment");
+                    }
+
+                    _operationalInsightsDataClient.BaseUri = targetUri;
+
+                    if (targetUri.AbsoluteUri.Contains("localhost"))
+                    {
+                        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+                    }
+                }
+
+                return _operationalInsightsDataClient;
+            }
+            set
+            {
+                _operationalInsightsDataClient = value;
+            }
+        }
+
+        private OperationalInsightsClient operationalInsightsClient;
+        internal OperationalInsightsClient OperationalInsightsClient
+        {
+            get
+            {
+                if (operationalInsightsClient == null)
+                {
+                    operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
+                }
+
+                return operationalInsightsClient;
+            }
+            set
+            {
+                operationalInsightsClient = value;
             }
         }
 
@@ -99,6 +164,85 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             return cmDetails;
         }
 
+        public PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor MapConnectionMonitorResultToPSMmaWorkspaceMachineConnectionMonitor(ConnectionMonitorResult connectionMonitor)
+        {
+            PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor psMmaWorkspaceMachineConnectionMonitor = new PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor()
+            {
+                Name = connectionMonitor.Name,
+                Id = connectionMonitor.Id,
+                Etag = connectionMonitor.Etag,
+                ProvisioningState = connectionMonitor.ProvisioningState,
+                Type = connectionMonitor.Type,
+                Location = connectionMonitor.Location,
+                StartTime = connectionMonitor.StartTime,
+                ConnectionMonitorType = connectionMonitor.ConnectionMonitorType,
+                Endpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>()
+            };
+
+            if (connectionMonitor.TestGroups != null)
+            {
+                foreach (ConnectionMonitorTestGroup testGroup in connectionMonitor.TestGroups)
+                {
+                    if (testGroup.Sources != null)
+                    {
+                        foreach (string sourceEndpointName in testGroup.Sources)
+                        {
+                            ConnectionMonitorEndpoint sourceEndpoint = GetEndpoinByName(connectionMonitor.Endpoints, sourceEndpointName);
+
+                            PSNetworkWatcherConnectionMonitorEndpointObject EndpointObject =
+                                NetworkResourceManagerProfile.Mapper.Map<PSNetworkWatcherConnectionMonitorEndpointObject>(sourceEndpoint);
+
+                            psMmaWorkspaceMachineConnectionMonitor.Endpoints.Add(EndpointObject);
+                        }
+                    }
+
+                    if (testGroup.Destinations != null)
+                    {
+                        foreach (string destinationEndpointName in testGroup.Destinations)
+                        {
+                            ConnectionMonitorEndpoint destinationEndpoint = GetEndpoinByName(connectionMonitor.Endpoints, destinationEndpointName);
+
+                            PSNetworkWatcherConnectionMonitorEndpointObject EndpointObject =
+                                NetworkResourceManagerProfile.Mapper.Map<PSNetworkWatcherConnectionMonitorEndpointObject>(destinationEndpoint);
+
+                            psMmaWorkspaceMachineConnectionMonitor.Endpoints.Add(EndpointObject);
+                        }
+                    }
+                }
+            }
+
+            return psMmaWorkspaceMachineConnectionMonitor;
+        }
+
+        public IEnumerable<ConnectionMonitorResult> MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> connectionMonitors)
+        {
+            List<ConnectionMonitorResult> cmResults = new List<ConnectionMonitorResult>();
+            foreach (var connectionMonitor in connectionMonitors)
+            {
+                ConnectionMonitorResult connectionMonitorResult = new ConnectionMonitorResult(
+                    connectionMonitor.Name, connectionMonitor.Id, connectionMonitor.Etag, connectionMonitor.Type,
+                    connectionMonitor.Location);
+
+                connectionMonitorResult.Endpoints = new List<ConnectionMonitorEndpoint>();
+
+                if (connectionMonitor.Endpoints != null)
+                {
+                    foreach (PSNetworkWatcherConnectionMonitorEndpointObject endpoint in connectionMonitor.Endpoints)
+                    {
+                        ConnectionMonitorEndpoint EndpointObject =
+                            NetworkResourceManagerProfile.Mapper.Map<ConnectionMonitorEndpoint>(endpoint);
+
+                        connectionMonitorResult.Endpoints.Add(EndpointObject);
+
+                    }
+                }
+
+                cmResults.Add(connectionMonitorResult);
+            }
+
+            return cmResults;
+        }
+
         /// <summary>
         /// Get All the CMs which has MMAWorkspaceMachine as endpoint
         /// </summary>
@@ -123,6 +267,94 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             var listConnectionMonitorResult = await Task.WhenAll(listCM);
             return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
+        }
+
+        /// <summary>
+        /// Get the ARC resource details from connection monitor list(which contains MMAWorkspaceMachine endpoints)
+        /// </summary>
+        /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints</param>
+        /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
+        public async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        {
+            var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
+            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == "MMAWorkspaceMachine"));
+            var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
+            return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
+        }
+
+        public void QueryForArg(string query)
+        {
+            ResourceGraphClient rgClient = AzureSession.Instance.ClientFactory.CreateArmClient<ResourceGraphClient>(DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
+            QueryRequest request = new QueryRequest
+            {
+                Query = query
+            };
+            QueryResponse response = rgClient.Resources(request);
+            var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
+            WriteInformation($"Arc resources details:===============================\n{JsonConvert.SerializeObject(data, Formatting.Indented)}\n", new string[] { "PSHOST" });
+        }
+
+        /// <summary>
+        /// Query for La work space for getting data by passing the Query or using hardcoded one
+        /// </summary>
+        public void QueryForLaWorkSpace(string workspaceId, string query)
+        {
+            IList<string> workspaces = new List<string>() { workspaceId };
+            OperationalInsightsDataClient.WorkspaceId = workspaceId;
+            var data = OperationalInsightsDataClient.Query(query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
+            var resultData = data.Results;
+            //var tabularFormatData = PSQueryResponse.Create(data);
+            WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
+        }
+
+        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
+        {
+            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
+                                             .GroupBy(g => new
+                                             {
+                                                 subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
+                                                 rg = NetworkWatcherUtility.GetResourceValue(g.ResourceId, "/resourceGroups")
+                                             })
+                                             .OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg)
+                                             .SelectMany(g => g);
+
+            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
+                .Where(networkingData => networkingData != null);
+
+            var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
+            return getAllArcResourceDetails.ToList();
+        }
+
+        private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
+        {
+            try
+            {
+                IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
+                string subscriptionId = NetworkWatcherUtility.GetSubscription(addressToWorkSpace.ResourceId);
+                string workSpaceRG = NetworkWatcherUtility.GetResourceValue(addressToWorkSpace.ResourceId, "/resourceGroups");
+                if (DefaultContext.Subscription.Id != subscriptionId)
+                {
+                    DefaultContext.Subscription.Id = subscriptionId;
+                    _operationalInsightsDataClient = null;
+                    operationalInsightsClient = null;
+                }
+
+                var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
+
+                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId))
+                {
+                    WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
+                    return null;
+                }
+
+                OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
+                return await OperationalInsightsDataClient.QueryAsync(CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
+            }
+            catch (Exception ex)
+            {
+                WriteInformation($"This is error while performing on this resource Id {addressToWorkSpace.ResourceId}, Error:  {ex}", new string[] { "PSHOST" });
+                return null;
+            }
         }
 
         /// <summary>

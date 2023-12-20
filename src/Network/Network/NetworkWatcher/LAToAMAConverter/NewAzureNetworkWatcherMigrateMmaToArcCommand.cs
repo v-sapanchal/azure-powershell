@@ -29,101 +29,11 @@ using PaginatedResponseHelper = Microsoft.Azure.Commands.ResourceManager.Common.
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
-    public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
+    public class NewAzureNetworkWatcherMigrateMmaToArcCommand : LaToAmaConnectionMonitorBaseCmdlet
     {
 
         private IAzureTokenCache _cache;
         private IProfileOperations _profile;
-
-        /// <summary>
-        /// The cancellation source.
-        /// </summary>
-        private CancellationTokenSource cancellationSource = null;
-
-        private OperationalInsightsDataClient _operationalInsightsDataClient;
-        internal OperationalInsightsDataClient OperationalInsightsDataClient
-        {
-            get
-            {
-                if (_operationalInsightsDataClient == null)
-                {
-                    ServiceClientCredentials clientCredentials = null;
-                    if (ParameterSetName == CommonUtility.ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
-                    {
-                        clientCredentials = new ApiKeyClientCredentials("DEMO_KEY");
-                    }
-                    else
-                    {
-                        clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
-                    }
-
-                    _operationalInsightsDataClient =
-                        AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
-                    _operationalInsightsDataClient.Preferences.IncludeRender = false;
-                    _operationalInsightsDataClient.Preferences.IncludeStatistics = false;
-                    _operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
-
-                    Uri targetUri = null;
-                    DefaultContext.Environment.TryGetEndpointUrl(
-                        AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint, out targetUri);
-                    if (targetUri == null)
-                    {
-                        throw new Exception("Operational Insights is not supported in this Azure Environment");
-                    }
-
-                    _operationalInsightsDataClient.BaseUri = targetUri;
-
-                    if (targetUri.AbsoluteUri.Contains("localhost"))
-                    {
-                        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-                    }
-                }
-
-                return _operationalInsightsDataClient;
-            }
-            set
-            {
-                _operationalInsightsDataClient = value;
-            }
-        }
-
-        private OperationalInsightsClient operationalInsightsClient;
-        internal OperationalInsightsClient OperationalInsightsClient
-        {
-            get
-            {
-                if (operationalInsightsClient == null)
-                {
-                    operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
-                }
-
-                return operationalInsightsClient;
-            }
-            set
-            {
-                operationalInsightsClient = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets the cancellation source.
-        /// </summary>
-        internal CancellationToken? CancellationToken
-        {
-            get
-            {
-                return cancellationSource == null ? new CancellationTokenSource().Token : cancellationSource.Token;
-            }
-        }
-
-        public ISubscriptionClientWrapper SubscriptionAndTenantClient = null;
-
-        /// <summary>
-        /// The endpoint that this client will communicate with.
-        /// </summary>
-        public Uri EndpointUri { get; set; }
-
-        public Action<string> WarningLog;
 
         /// <summary>
         /// Gets or sets the query.
@@ -144,16 +54,9 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         public int TimespanInHrs { get; set; }
 
 
-        ///// <summary>
-        ///// Gets or sets the Work Space Id.
-        ///// </summary>sub
-        //[Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Work Space Id")]
-        //[AllowEmptyString]
-        //public string WorkSpaceId
-        //{
-        //    get;
-        //    set;
-        //}
+        [Parameter(Mandatory = true, HelpMessage = "List of MMA machine connection monitor.")]
+        [ValidateNotNullOrEmpty]
+        public PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor[] MMAWorkspaceConnectionMonitors { get; set; }
 
         public override async void Execute()
         {
@@ -169,366 +72,40 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
             }
 
-            var endpointUri = new Uri(endpoint, UriKind.Absolute);
-            EndpointUri = endpointUri;
+            //var endpointUri = new Uri(endpoint, UriKind.Absolute);
+            //EndpointUri = endpointUri;
 
-            // Fetch all Subscriptions
-            IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
-            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
-            if (allCmHasMMAWorkspaceMachine?.Count() > 0)
+            //// Fetch all Subscriptions
+            //IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
+            //IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
+            //IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
+            //if (allCmHasMMAWorkspaceMachine?.Count() > 0)
+            //{
+            //    WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
+            //    WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
+            //}
+            //else
+            //{
+            //    WriteInformation($"Connection Monitors don't have any MMAWorkspace Endpoints.\n", new string[] { "PSHOST" });
+            //}
+
+            if (MMAWorkspaceConnectionMonitors?.Count() > 0)
             {
-                WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
-                WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
+                var cmList = MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(MMAWorkspaceConnectionMonitors);
+                // For LA work space logs query
+                var allArcResources = await GetNetworkAgentLAWorkSpaceData(cmList);
+                var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
+                // WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
+
+                int noOfTakeResult = 100;
+                //Need to refactor this code for distinct resource Id
+                var getArcResourceIdsRows = allArcResourcesHasData.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
+                string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
+                string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
+
+                // For ARG Query to get the ARC resource details
+                QueryForArg(customQueryForArg);
             }
-            else
-            {
-                WriteInformation($"Connection Monitors don't have any MMAWorkspace Endpoints.\n", new string[] { "PSHOST" });
-            }
-
-            // For LA work space logs query
-            var allArcResources = await GetNetworkAgentLAWorkSpaceData(allCmHasMMAWorkspaceMachine);
-            var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
-            // WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
-
-            int noOfTakeResult = 100;
-            //Need to refactor this code for distinct resource Id
-            var getArcResourceIdsRows = allArcResourcesHasData.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
-            string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
-            string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
-
-            // For ARG Query to get the ARC resource details
-            QueryForArg(customQueryForArg);
-        }
-
-        /// <summary>
-        /// Get the ARC resource details from connection monitor list(which contains MMAWorkspaceMachine endpoints)
-        /// </summary>
-        /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints</param>
-        /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
-        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
-        {
-            var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
-            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == "MMAWorkspaceMachine"));
-            var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
-            return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
-        }
-
-        private void QueryForArg(string query)
-        {
-            ResourceGraphClient rgClient = AzureSession.Instance.ClientFactory.CreateArmClient<ResourceGraphClient>(DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
-            QueryRequest request = new QueryRequest
-            {
-                Query = query
-            };
-            QueryResponse response = rgClient.Resources(request);
-            var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
-            WriteInformation($"Arc resources details:===============================\n{JsonConvert.SerializeObject(data, Formatting.Indented)}\n", new string[] { "PSHOST" });
-        }
-
-        /// <summary>
-        /// Query for La work space for getting data by passing the Query or using hardcoded one
-        /// </summary>
-        private void QueryForLaWorkSpace()
-        {
-            IList<string> workspaces = new List<string>() { WorkspaceId };
-            OperationalInsightsDataClient.WorkspaceId = WorkspaceId;
-            var data = OperationalInsightsDataClient.Query(Query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
-            var resultData = data.Results;
-            //var tabularFormatData = PSQueryResponse.Create(data);
-            WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
-        }
-
-        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
-        {
-            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
-                                             .GroupBy(g => new
-                                             {
-                                                 subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
-                                                 rg = NetworkWatcherUtility.GetResourceValue(g.ResourceId, "/resourceGroups")
-                                             })
-                                             .OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg)
-                                             .SelectMany(g => g);
-
-            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
-                .Where(networkingData => networkingData != null);
-
-            var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
-            return getAllArcResourceDetails.ToList();
-        }
-
-        private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
-        {
-            try
-            {
-                IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
-                string subscriptionId = NetworkWatcherUtility.GetSubscription(addressToWorkSpace.ResourceId);
-                string workSpaceRG = NetworkWatcherUtility.GetResourceValue(addressToWorkSpace.ResourceId, "/resourceGroups");
-                if (DefaultContext.Subscription.Id != subscriptionId)
-                {
-                    DefaultContext.Subscription.Id = subscriptionId;
-                    _operationalInsightsDataClient = null;
-                    operationalInsightsClient = null;
-                }
-
-                var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
-
-                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId))
-                {
-                    WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                    return null;
-                }
-
-                OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
-                string query = Query ?? CommonUtility.Query;
-                TimeSpan forQuery = TimespanInHrs == 0 ? CommonUtility.TimeSpanForLAQuery : TimeSpan.FromHours(TimespanInHrs);
-                return await OperationalInsightsDataClient.QueryAsync(query, CommonUtility.TimeSpanForLAQuery, workspaces);
-            }
-            catch (Exception ex)
-            {
-                WriteInformation($"This is error while performing on this resource Id {addressToWorkSpace.ResourceId}, Error:  {ex}", new string[] { "PSHOST" });
-                return null;
-            }
-        }
-
-
-        public IEnumerable<AzureSubscription> GetAllSubscriptionsByUserContext()
-        {
-            var tenantId = DefaultContext.Tenant.Id;
-            return ListAllSubscriptionsForTenant(tenantId);
-        }
-
-        /// <summary>
-        /// Get All the connection Monitors under user context subscriptions
-        /// </summary>
-        /// <param name="subscriptionsList">user context subscriptions</param>
-        /// <returns>collection of all the ConnectionMonitor Resource Detail</returns>
-        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList)
-        {
-            List<ConnectionMonitorResourceDetail> cmDetails = new List<ConnectionMonitorResourceDetail>();
-
-            foreach (var subs in subscriptionsList)
-            {
-                PaginatedResponseHelper.ForEach(
-                getFirstPage: async () => await ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
-                getNextPage: async nextLink => await GetNextLink<JObject>(nextLink),
-                cancellationToken: CancellationToken,
-                action: resources =>
-                {
-                    if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out CmResource<JToken> resource))
-                    {
-                        var genericResources = resources.CoalesceEnumerable().Where(res => res != null).SelectArray(res => res.ToResource());
-
-                        foreach (var batch in genericResources.Batch())
-                        {
-                            var items = batch;
-                            var powerShellObjects = items.SelectArray(genericResource => genericResource.ToJToken());
-                            cmDetails.AddRange(ExtractCmResourceDetails(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList()));
-                            //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                        }
-                    }
-                    else
-                    {
-                        cmDetails.AddRange(ExtractCmResourceDetails(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList()));
-                        //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                    }
-                });
-            }
-
-            return cmDetails;
-        }
-
-        /// <summary>
-        /// Get All the CMs which has MMAWorkspaceMachine as endpoint
-        /// </summary>
-        /// <param name="connectionMonitors">Basic details of CM like id, name , location, type</param>
-        /// <param name="endpointType">endpointType = MMAWorkspaceMachine</param>
-        public async Task<List<ConnectionMonitorResult>> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType)
-        {
-            List<Task<ConnectionMonitorResult>> listCM = new List<Task<ConnectionMonitorResult>>();
-            foreach (var cm in connectionMonitors)
-            {
-                string subscriptionId = GetSubscriptionIdByResourceId(cm.Id);
-                // Need to discuss, only changing subsid client.SetCurrentContext(subscriptionId, Tenant, name);
-                if (DefaultContext.Subscription.Id != subscriptionId)
-                {
-                    DefaultContext.Subscription.Id = subscriptionId;
-                    NetworkClient = new NetworkClient(DefaultContext);
-                }
-                ConnectionMonitorDetails cmBasicDetails = GetConnectionMonitorDetails(cm.Id);
-                // WriteInformation($"{JsonConvert.SerializeObject(cmBasicDetails, Formatting.None)} and Subscription {subscriptionId}", new string[] { "PSHOST" });
-                listCM.Add(ConnectionMonitors.GetAsync(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
-            }
-
-            var listConnectionMonitorResult = await Task.WhenAll(listCM);
-            return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
-        }
-
-        /// <summary>
-        /// Get the subscription id from resource id
-        /// </summary>
-        /// <param name="resourceId">resource id</param>
-        /// <returns>subscription id</returns>
-        /// <exception cref="ArgumentException"></exception>
-        private static string GetSubscriptionIdByResourceId(string resourceId)
-        {
-            string[] array = resourceId.Split(new char[1] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (array.Length < 8)
-            {
-                throw new ArgumentException("Invalid format of the resource identifier.", "idFromServer");
-            }
-
-            return array[1];
-        }
-
-        private IAccessToken AcquireAccessToken(
-           IAzureAccount account,
-           IAzureEnvironment environment,
-           string tenantId,
-           SecureString password,
-           string promptBehavior,
-           Action<string> promptAction,
-           string resourceId = AzureEnvironment.Endpoint.ActiveDirectoryServiceEndpointResourceId)
-        {
-            if (account.Type == AzureAccount.AccountType.AccessToken)
-            {
-                tenantId = tenantId ?? account.GetCommonTenant();
-                return new SimpleAccessToken(account, tenantId);
-            }
-
-            return AzureSession.Instance.AuthenticationFactory.Authenticate(
-                account,
-                environment,
-                tenantId,
-                password,
-                promptBehavior,
-                promptAction,
-                _cache,
-                resourceId);
-        }
-
-        private IEnumerable<AzureSubscription> ListAllSubscriptionsForTenant(
-          string tenantId)
-        {
-            IAzureAccount account = _profile.DefaultContext.Account;
-            IAzureEnvironment environment = _profile.DefaultContext.Environment;
-            SecureString password = null;
-            string promptBehavior = ShowDialog.Never;
-            IAccessToken accessToken = null;
-            try
-            {
-                accessToken = AcquireAccessToken(account, environment, tenantId, password, promptBehavior, null);
-            }
-            catch (Exception e)
-            {
-                WriteWarningMessage(e.Message);
-                //WriteDebugMessage(string.Format(ProfileMessages.UnableToAqcuireToken, tenantId, e.ToString()));
-                return new List<AzureSubscription>();
-            }
-
-            return SubscriptionAndTenantClient?.ListAllSubscriptionsForTenant(accessToken, account, environment);
-        }
-
-        private void WriteWarningMessage(string message)
-        {
-            if (WarningLog != null)
-            {
-                WarningLog(message);
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="cmResourceObjects"></param>
-        /// <returns></returns>
-        private static List<ConnectionMonitorResourceDetail> ExtractCmResourceDetails(List<JObject> cmResourceObjects)
-        {
-            List<ConnectionMonitorResourceDetail> connectionMonitors = new List<ConnectionMonitorResourceDetail>();
-            cmResourceObjects.ForEach(cm =>
-            {
-                connectionMonitors.Add(new ConnectionMonitorResourceDetail
-                {
-                    Id = cm["Id"]?.Value<string>(),
-                    Name = cm["Name"]?.Value<string>(),
-                    Location = cm["Location"]?.Value<string>(),
-                    Type = cm["Type"]?.Value<string>()
-                });
-            });
-
-            return connectionMonitors;
-        }
-
-        /// <summary>
-        /// Gets the resources in a subscription.
-        /// </summary>
-        private async Task<ResponseWithContinuation<JObject[]>> ListResourcesInSubscription(Guid SubscriptionId, string ResourceType, string ODataQuery)
-        {
-            var filterQuery = QueryFilterBuilder
-                .CreateFilter(
-                    subscriptionId: SubscriptionId.ToString(),
-                    resourceGroup: null,
-                    resourceType: ResourceType,
-                    resourceName: null,
-                    tagName: null,
-                    tagValue: null,
-                    filter: ODataQuery);
-
-            return await 
-                GetResourcesClient()
-                .ListResources<JObject>(
-                    subscriptionId: SubscriptionId,
-                    apiVersion: "2016-09-01",
-                    filter: filterQuery,
-                    cancellationToken: CancellationToken.Value)
-                .ConfigureAwait(continueOnCapturedContext: false);
-        }
-
-        /// <summary>
-        /// Gets the next set of resources using the <paramref name="nextLink"/>
-        /// </summary>
-        /// <param name="nextLink">The next link.</param>
-        private Task<ResponseWithContinuation<TType[]>> GetNextLink<TType>(string nextLink)
-        {
-            return 
-                GetResourcesClient()
-                .ListNextBatch<TType>(nextLink: nextLink, cancellationToken: CancellationToken.Value);
-        }
-
-        /// <summary>
-        /// Gets a new instance of the <see cref="ResourceManagerRestRestClient"/>.
-        /// </summary>
-        public ResourceManagerRestRestClient GetResourcesClient()
-        {
-            var endpoint = DefaultContext.Environment.GetEndpoint(AzureEnvironment.Endpoint.ResourceManager);
-
-            if (string.IsNullOrWhiteSpace(endpoint))
-            {
-                throw new ApplicationException(
-                    "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
-            }
-
-            var endpointUri = new Uri(endpoint, UriKind.Absolute);
-
-            return new ResourceManagerRestRestClient(
-                endpointUri: endpointUri,
-                httpClientHelper: HttpClientHelperFactory.Instance
-                .CreateHttpClientHelper(
-                        credentials: AzureSession.Instance.AuthenticationFactory
-                                                 .GetServiceClientCredentials(
-                                                    DefaultContext,
-                                                    AzureEnvironment.Endpoint.ResourceManager),
-                        headerValues: AzureSession.Instance.ClientFactory.UserAgents,
-                        cmdletHeaderValues: GetCmdletHeaders()));
-        }
-
-        private Dictionary<string, string> GetCmdletHeaders()
-        {
-            return new Dictionary<string, string>
-            {
-                {"ParameterSetName", ParameterSetName },
-                {"CommandName", CommandRuntime.ToString() }
-            };
         }
     }
 }

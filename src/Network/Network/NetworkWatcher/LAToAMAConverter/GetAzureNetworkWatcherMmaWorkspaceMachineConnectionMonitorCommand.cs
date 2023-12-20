@@ -27,7 +27,7 @@ using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
-    [Cmdlet("Get", AzureRMConstants.AzureRMPrefix + "NetworkWatcherMmaWorkspaceMachineConnectionMonitor", DefaultParameterSetName = "SetByName"), OutputType(typeof(PSConnectionMonitorResultV1), typeof(PSConnectionMonitorResultV2))]
+    [Cmdlet("Get", AzureRMConstants.AzureRMPrefix + "NetworkWatcherMmaWorkspaceMachineConnectionMonitor", DefaultParameterSetName = "SetByName"), OutputType(typeof(PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor))]
 
     public class GetAzureNetworkWatcherMmaWorkspaceMachineConnectionMonitor : LaToAmaConnectionMonitorBaseCmdlet
     {
@@ -56,12 +56,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             {
                 WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
 
-                List<PSConnectionMonitorResult> psConnectionMonitorList = new List<PSConnectionMonitorResult>();
+                List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> psMmaWorkspaceMachineConnectionMonitorList = new List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor>();
                 foreach (var connectionMonitor in allCmHasMMAWorkspaceMachine)
                 {
-                    psConnectionMonitorList.Add(ConvertConnectionMonitorResultV2ToPSFormat(connectionMonitor));
+                    psMmaWorkspaceMachineConnectionMonitorList.Add(MapConnectionMonitorResultToPSMmaWorkspaceMachineConnectionMonitor(connectionMonitor));
                 }
-                WriteObject(psConnectionMonitorList, true);
+                WriteObject(psMmaWorkspaceMachineConnectionMonitorList, true);
                 //WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
             }
             else
