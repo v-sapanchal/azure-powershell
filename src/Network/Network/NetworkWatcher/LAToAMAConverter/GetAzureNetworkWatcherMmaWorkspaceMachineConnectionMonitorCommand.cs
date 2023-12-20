@@ -1,0 +1,73 @@
+﻿// ----------------------------------------------------------------------------------
+//
+// Copyright Microsoft Corporation
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ----------------------------------------------------------------------------------
+
+using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
+using Microsoft.Azure.Commands.Common.Authentication.Models;
+using Microsoft.Azure.Commands.Network.Models;
+using Microsoft.Azure.Commands.ResourceManager.Common;
+using Microsoft.Azure.Management.Network.Models;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Management.Automation;
+using Microsoft.Azure.Commands.Common.Authentication;
+using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
+
+namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
+{
+    [Cmdlet("Get", AzureRMConstants.AzureRMPrefix + "NetworkWatcherMmaWorkspaceMachineConnectionMonitor", DefaultParameterSetName = "SetByName"), OutputType(typeof(PSConnectionMonitorResultV1), typeof(PSConnectionMonitorResultV2))]
+
+    public class GetAzureNetworkWatcherMmaWorkspaceMachineConnectionMonitor : LaToAmaConnectionMonitorBaseCmdlet
+    {
+        private IAzureTokenCache _cache;
+        private IProfileOperations _profile;
+
+        public override void Execute()
+        {
+            base.Execute();
+            _cache = AzureSession.Instance.TokenCache;
+            _profile = AzureRmProfileProvider.Instance.GetProfile<AzureRmProfile>();
+            var profileClient = new RMProfileClient(_profile);
+            SubscriptionAndTenantClient = profileClient.SubscriptionAndTenantClient;
+            var endpoint = DefaultContext.Environment.GetEndpoint(AzureEnvironment.Endpoint.ResourceManager);
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                throw new ApplicationException(
+                    "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
+            }
+
+            // Fetch all Subscriptions
+            IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext(_profile, _cache);
+            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine")?.GetAwaiter().GetResult();
+            if (allCmHasMMAWorkspaceMachine?.Count() > 0)
+            {
+                WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
+
+                List<PSConnectionMonitorResult> psConnectionMonitorList = new List<PSConnectionMonitorResult>();
+                foreach (var connectionMonitor in allCmHasMMAWorkspaceMachine)
+                {
+                    psConnectionMonitorList.Add(ConvertConnectionMonitorResultV2ToPSFormat(connectionMonitor));
+                }
+                WriteObject(psConnectionMonitorList, true);
+                //WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
+            }
+            else
+            {
+                WriteInformation($"Connection Monitors don't have any MMAWorkspace Endpoints.\n", new string[] { "PSHOST" });
+            }
+        }
+    }
+}

@@ -1,35 +1,33 @@
-﻿namespace Microsoft.Azure.Commands.Network
-{
-    using System;
-    using System.Collections.Generic;
-    using System.Management.Automation;
-    using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
-    using Microsoft.Azure.Commands.Common.Authentication;
-    using Microsoft.Azure.Commands.Network.Models;
-    using Microsoft.Azure.Management.ResourceGraph;
-    using Microsoft.Azure.Management.ResourceGraph.Models;
-    using Newtonsoft.Json;
-    using System.Linq;
-    using System.Security;
-    using Microsoft.Azure.Commands.Profile.Models;
-    using Microsoft.Azure.Commands.Common.Authentication.Models;
-    using Microsoft.Azure.Commands.ResourceManager.Common;
-    using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
-    using Newtonsoft.Json.Linq;
-    using System.Threading.Tasks;
-    using System.Threading;
-    using Microsoft.Azure.Management.Network.Models;
-    using Microsoft.Azure.Commands.Common.Strategies;
-    using Microsoft.Azure.Management.Network;
-    using Microsoft.Rest;
-    using System.Net;
-    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter;
-    using Microsoft.Azure.Commands.OperationalInsights.Client;
-    using Microsoft.Azure.Commands.OperationalInsights;
-    using Microsoft.Azure.OperationalInsights;
-    using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
-    using PaginatedResponseHelper = ResourceManager.Common.PaginatedResponseHelper;
+﻿using System;
+using System.Collections.Generic;
+using System.Management.Automation;
+using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
+using Microsoft.Azure.Commands.Common.Authentication;
+using Microsoft.Azure.Commands.Network.Models;
+using Microsoft.Azure.Management.ResourceGraph;
+using Microsoft.Azure.Management.ResourceGraph.Models;
+using Newtonsoft.Json;
+using System.Linq;
+using System.Security;
+using Microsoft.Azure.Commands.Profile.Models;
+using Microsoft.Azure.Commands.Common.Authentication.Models;
+using Microsoft.Azure.Commands.ResourceManager.Common;
+using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
+using Newtonsoft.Json.Linq;
+using System.Threading.Tasks;
+using System.Threading;
+using Microsoft.Azure.Management.Network.Models;
+using Microsoft.Azure.Commands.Common.Strategies;
+using Microsoft.Azure.Management.Network;
+using Microsoft.Rest;
+using System.Net;
+using Microsoft.Azure.Commands.OperationalInsights.Client;
+using Microsoft.Azure.OperationalInsights;
+using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
+using PaginatedResponseHelper = Microsoft.Azure.Commands.ResourceManager.Common.PaginatedResponseHelper;
 
+namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
+{
     [Cmdlet("New", AzureRMConstants.AzureRMPrefix + "AzureNetworkWatcherMigrateMmaToArc"), OutputType(typeof(PSAzureNetworkWatcherMigrateMmaToArc))]
     public class NewAzureNetworkWatcherMigrateMmaToArcCommand : ConnectionMonitorBaseCmdlet
     {
@@ -47,23 +45,23 @@
         {
             get
             {
-                if (this._operationalInsightsDataClient == null)
+                if (_operationalInsightsDataClient == null)
                 {
                     ServiceClientCredentials clientCredentials = null;
                     if (ParameterSetName == CommonUtility.ParamSetNameByWorkspaceId && WorkspaceId == "DEMO_WORKSPACE")
                     {
-                        clientCredentials = new Azure.OperationalInsights.ApiKeyClientCredentials("DEMO_KEY");
+                        clientCredentials = new ApiKeyClientCredentials("DEMO_KEY");
                     }
                     else
                     {
                         clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
                     }
 
-                    this._operationalInsightsDataClient =
+                    _operationalInsightsDataClient =
                         AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
-                    this._operationalInsightsDataClient.Preferences.IncludeRender = false;
-                    this._operationalInsightsDataClient.Preferences.IncludeStatistics = false;
-                    this._operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
+                    _operationalInsightsDataClient.Preferences.IncludeRender = false;
+                    _operationalInsightsDataClient.Preferences.IncludeStatistics = false;
+                    _operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
 
                     Uri targetUri = null;
                     DefaultContext.Environment.TryGetEndpointUrl(
@@ -73,7 +71,7 @@
                         throw new Exception("Operational Insights is not supported in this Azure Environment");
                     }
 
-                    this._operationalInsightsDataClient.BaseUri = targetUri;
+                    _operationalInsightsDataClient.BaseUri = targetUri;
 
                     if (targetUri.AbsoluteUri.Contains("localhost"))
                     {
@@ -81,11 +79,11 @@
                     }
                 }
 
-                return this._operationalInsightsDataClient;
+                return _operationalInsightsDataClient;
             }
             set
             {
-                this._operationalInsightsDataClient = value;
+                _operationalInsightsDataClient = value;
             }
         }
 
@@ -94,16 +92,16 @@
         {
             get
             {
-                if (this.operationalInsightsClient == null)
+                if (operationalInsightsClient == null)
                 {
-                    this.operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
+                    operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
                 }
 
-                return this.operationalInsightsClient;
+                return operationalInsightsClient;
             }
             set
             {
-                this.operationalInsightsClient = value;
+                operationalInsightsClient = value;
             }
         }
 
@@ -114,7 +112,7 @@
         {
             get
             {
-                return this.cancellationSource == null ? new CancellationTokenSource().Token : (CancellationToken?)this.cancellationSource.Token;
+                return cancellationSource == null ? new CancellationTokenSource().Token : cancellationSource.Token;
             }
         }
 
@@ -189,7 +187,7 @@
             }
 
             // For LA work space logs query
-            var allArcResources = await this.GetNetworkAgentLAWorkSpaceData(allCmHasMMAWorkspaceMachine);
+            var allArcResources = await GetNetworkAgentLAWorkSpaceData(allCmHasMMAWorkspaceMachine);
             var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
             // WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
 
@@ -200,7 +198,7 @@
             string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
 
             // For ARG Query to get the ARC resource details
-            this.QueryForArg(customQueryForArg);
+            QueryForArg(customQueryForArg);
         }
 
         /// <summary>
@@ -233,9 +231,9 @@
         /// </summary>
         private void QueryForLaWorkSpace()
         {
-            IList<string> workspaces = new List<string>() { this.WorkspaceId };
-            OperationalInsightsDataClient.WorkspaceId = this.WorkspaceId;
-            var data = OperationalInsightsDataClient.Query(this.Query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
+            IList<string> workspaces = new List<string>() { WorkspaceId };
+            OperationalInsightsDataClient.WorkspaceId = WorkspaceId;
+            var data = OperationalInsightsDataClient.Query(Query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
             var resultData = data.Results;
             //var tabularFormatData = PSQueryResponse.Create(data);
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
@@ -269,8 +267,8 @@
                 if (DefaultContext.Subscription.Id != subscriptionId)
                 {
                     DefaultContext.Subscription.Id = subscriptionId;
-                    this._operationalInsightsDataClient = null;
-                    this.operationalInsightsClient = null;
+                    _operationalInsightsDataClient = null;
+                    operationalInsightsClient = null;
                 }
 
                 var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
@@ -282,7 +280,7 @@
                 }
 
                 OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
-                string query = this.Query ?? CommonUtility.Query;
+                string query = Query ?? CommonUtility.Query;
                 TimeSpan forQuery = TimespanInHrs == 0 ? CommonUtility.TimeSpanForLAQuery : TimeSpan.FromHours(TimespanInHrs);
                 return await OperationalInsightsDataClient.QueryAsync(query, CommonUtility.TimeSpanForLAQuery, workspaces);
             }
@@ -312,13 +310,12 @@
             foreach (var subs in subscriptionsList)
             {
                 PaginatedResponseHelper.ForEach(
-                getFirstPage: async () => await this.ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
-                getNextPage: async nextLink => await this.GetNextLink<JObject>(nextLink),
-                cancellationToken: this.CancellationToken,
+                getFirstPage: async () => await ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
+                getNextPage: async nextLink => await GetNextLink<JObject>(nextLink),
+                cancellationToken: CancellationToken,
                 action: resources =>
                 {
-                    CmResource<JToken> resource;
-                    if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out resource))
+                    if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out CmResource<JToken> resource))
                     {
                         var genericResources = resources.CoalesceEnumerable().Where(res => res != null).SelectArray(res => res.ToResource());
 
@@ -356,11 +353,11 @@
                 if (DefaultContext.Subscription.Id != subscriptionId)
                 {
                     DefaultContext.Subscription.Id = subscriptionId;
-                    this.NetworkClient = new NetworkClient(DefaultContext);
+                    NetworkClient = new NetworkClient(DefaultContext);
                 }
-                ConnectionMonitorDetails cmBasicDetails = this.GetConnectionMonitorDetails(cm.Id);
+                ConnectionMonitorDetails cmBasicDetails = GetConnectionMonitorDetails(cm.Id);
                 // WriteInformation($"{JsonConvert.SerializeObject(cmBasicDetails, Formatting.None)} and Subscription {subscriptionId}", new string[] { "PSHOST" });
-                listCM.Add(this.ConnectionMonitors.GetAsync(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
+                listCM.Add(ConnectionMonitors.GetAsync(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
             }
 
             var listConnectionMonitorResult = await Task.WhenAll(listCM);
@@ -477,13 +474,13 @@
                     tagValue: null,
                     filter: ODataQuery);
 
-            return await this
-                .GetResourcesClient()
+            return await 
+                GetResourcesClient()
                 .ListResources<JObject>(
                     subscriptionId: SubscriptionId,
                     apiVersion: "2016-09-01",
                     filter: filterQuery,
-                    cancellationToken: this.CancellationToken.Value)
+                    cancellationToken: CancellationToken.Value)
                 .ConfigureAwait(continueOnCapturedContext: false);
         }
 
@@ -493,9 +490,9 @@
         /// <param name="nextLink">The next link.</param>
         private Task<ResponseWithContinuation<TType[]>> GetNextLink<TType>(string nextLink)
         {
-            return this
-                .GetResourcesClient()
-                .ListNextBatch<TType>(nextLink: nextLink, cancellationToken: this.CancellationToken.Value);
+            return 
+                GetResourcesClient()
+                .ListNextBatch<TType>(nextLink: nextLink, cancellationToken: CancellationToken.Value);
         }
 
         /// <summary>
@@ -522,15 +519,15 @@
                                                     DefaultContext,
                                                     AzureEnvironment.Endpoint.ResourceManager),
                         headerValues: AzureSession.Instance.ClientFactory.UserAgents,
-                        cmdletHeaderValues: this.GetCmdletHeaders()));
+                        cmdletHeaderValues: GetCmdletHeaders()));
         }
 
         private Dictionary<string, string> GetCmdletHeaders()
         {
             return new Dictionary<string, string>
             {
-                {"ParameterSetName", this.ParameterSetName },
-                {"CommandName", this.CommandRuntime.ToString() }
+                {"ParameterSetName", ParameterSetName },
+                {"CommandName", CommandRuntime.ToString() }
             };
         }
     }

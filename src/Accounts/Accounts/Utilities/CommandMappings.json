@@ -4609,7 +4609,8 @@
       "Get-AzApplicationGatewayAvailableSslOptions": {},
       "Get-AzInterfaceEndpoint": {},
       "New-AzFirewallThreatIntelWhitelistObject": {},
-      "New-AzAzureNetworkWatcherMigrateMmaToArc": {}
+      "New-AzAzureNetworkWatcherMigrateMmaToArc": {},
+      "Get-AzNetworkWatcherMmaWorkspaceMachineConnectionMonitor": {}
     },
     "Az.NetworkCloud": {
       "Deploy-AzNetworkCloudCluster": {},

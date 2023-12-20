@@ -1681,7 +1681,8 @@
     "Get-AzExpressRouteCrossConnectionArpTable": "Get-AzureRmExpressRouteCrossConnectionArpTable",
     "Get-AzExpressRouteCrossConnectionRouteTable": "Get-AzureRmExpressRouteCrossConnectionRouteTable",
     "Get-AzExpressRouteCrossConnectionRouteTableSummary": "Get-AzureRmExpressRouteCrossConnectionRouteTableSummary",
-    "New-AzAzureNetworkWatcherMigrateMmaToArc": "Get-AzureRmNetworkWatcherMigrateMmaToArc"
+    "New-AzAzureNetworkWatcherMigrateMmaToArc": "New-AzureRmNetworkWatcherMigrateMmaToArc",
+    "Get-AzAzureNetworkWatcherMmaWorkspaceMachineConnectionMonitor": "Get-AzureRmNetworkWatcherMmaWorkspaceMachineConnectionMonitor"
   },
   "Az.NotificationHubs": {
     "Get-AzNotificationHub": "Get-AzureRmNotificationHub",
