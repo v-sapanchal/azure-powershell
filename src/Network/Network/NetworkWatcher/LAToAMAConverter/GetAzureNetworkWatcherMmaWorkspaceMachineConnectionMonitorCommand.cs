@@ -17,7 +17,6 @@ using Microsoft.Azure.Commands.Common.Authentication.Models;
 using Microsoft.Azure.Commands.Network.Models;
 using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Management.Network.Models;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -34,6 +33,39 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         private IAzureTokenCache _cache;
         private IProfileOperations _profile;
 
+        /// <summary>
+        /// Gets or sets the Work Space Id.
+        /// </summary>sub
+        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
+        [AllowEmptyString]
+        public string WorkSpaceId
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Gets or sets the Work Space Id.
+        /// </summary>sub
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Subscription Id, under this subscription you get all CM resources")]
+        [AllowEmptyString]
+        public string SubscriptionId
+        {
+            get;
+            set;
+        }
+
+        /// <summary>
+        /// Gets or sets the Work Space Id.
+        /// </summary>sub
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Region, fetch only those CM resources which comes under this region")]
+        [AllowEmptyString]
+        public string Region
+        {
+            get;
+            set;
+        }
+
         public override void Execute()
         {
             base.Execute();
@@ -48,10 +80,20 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
             }
 
-            // Fetch all Subscriptions
-            IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext(_profile, _cache);
-            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine")?.GetAwaiter().GetResult();
+            List<string> subscriptionIds = new List<string>();
+            
+            if (!string.IsNullOrEmpty(this.SubscriptionId))
+            {
+                subscriptionIds.Add(this.SubscriptionId);
+            }
+            else
+            {
+                // Fetch all Subscriptions
+                subscriptionIds = GetAllSubscriptionsByUserContext(_profile, _cache)?.Select(s => s.Id).ToList();
+            }
+
+            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptionIds, this.Region);
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, CommonUtility.EndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
             if (allCmHasMMAWorkspaceMachine?.Count() > 0)
             {
                 WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });

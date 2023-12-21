@@ -128,15 +128,16 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// Get All the connection Monitors under user context subscriptions
         /// </summary>
         /// <param name="subscriptionsList">user context subscriptions</param>
+        /// <param name="region">connection monitor region</param>
         /// <returns>collection of all the ConnectionMonitor Resource Detail</returns>
-        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<AzureSubscription> subscriptionsList)
+        public IEnumerable<ConnectionMonitorResourceDetail> GetConnectionMonitorBySubscriptions(IEnumerable<string> subscriptionsList, string region = null)
         {
             List<ConnectionMonitorResourceDetail> cmDetails = new List<ConnectionMonitorResourceDetail>();
 
-            Parallel.ForEach(subscriptionsList, subs =>
+            Parallel.ForEach(subscriptionsList, subId =>
             {
                 PaginatedResponseHelper.ForEach(
-                    getFirstPage: async () => await ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
+                    getFirstPage: async () => await ListResourcesInSubscription(new Guid(subId), CommonUtility.ConnectionMonitorResourceType, region, string.Empty),
                     getNextPage: async nextLink => await GetNextLink<JObject>(nextLink),
                     cancellationToken: CancellationToken,
                     action: resources =>
@@ -246,25 +247,33 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// </summary>
         /// <param name="connectionMonitors">Basic details of CM like id, name , location, type</param>
         /// <param name="endpointType">endpointType = MMAWorkspaceMachine</param>
-        public async Task<List<ConnectionMonitorResult>> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType)
+        /// <param name="workSpaceId">work space Id</param>
+        /// <returns>collection of connection monitor results</returns>
+        public async Task<List<ConnectionMonitorResult>> GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(IEnumerable<ConnectionMonitorResourceDetail> connectionMonitors, string endpointType, string workSpaceId = null)
         {
             List<Task<ConnectionMonitorResult>> listCM = new List<Task<ConnectionMonitorResult>>();
             foreach (var cm in connectionMonitors)
             {
                 string subscriptionId = GetSubscriptionIdByResourceId(cm.Id);
-                // Need to discuss, only changing subsid client.SetCurrentContext(subscriptionId, Tenant, name);
                 if (DefaultContext.Subscription.Id != subscriptionId)
                 {
                     DefaultContext.Subscription.Id = subscriptionId;
                     NetworkClient = new NetworkClient(DefaultContext);
                 }
                 ConnectionMonitorDetails cmBasicDetails = GetConnectionMonitorDetails(cm.Id);
-                // WriteInformation($"{JsonConvert.SerializeObject(cmBasicDetails, Formatting.None)} and Subscription {subscriptionId}", new string[] { "PSHOST" });
                 listCM.Add(ConnectionMonitors.GetAsync(cmBasicDetails.ResourceGroupName, cmBasicDetails.NetworkWatcherName, cmBasicDetails.ConnectionMonitorName));
             }
 
             var listConnectionMonitorResult = await Task.WhenAll(listCM);
-            return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
+            // if we remove workspace id as mandatory param
+            if (workSpaceId != null)
+            {
+                return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType && a.ResourceId == workSpaceId)).ToList();
+            }
+            else
+            {
+                return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
+            }
         }
 
         /// <summary>
@@ -418,7 +427,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <summary>
         /// Gets the resources in a subscription.
         /// </summary>
-        private async Task<ResponseWithContinuation<JObject[]>> ListResourcesInSubscription(Guid SubscriptionId, string ResourceType, string ODataQuery)
+        private async Task<ResponseWithContinuation<JObject[]>> ListResourcesInSubscription(Guid SubscriptionId, string ResourceType, string Region, string ODataQuery)
         {
             var filterQuery = QueryFilterBuilder
                 .CreateFilter(
@@ -426,8 +435,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     resourceGroup: null,
                     resourceType: ResourceType,
                     resourceName: null,
-                    tagName: null,
-                    tagValue: null,
+                    location: Region,
                     filter: ODataQuery);
 
             return await

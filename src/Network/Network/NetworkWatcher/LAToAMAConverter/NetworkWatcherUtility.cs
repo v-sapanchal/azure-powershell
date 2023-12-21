@@ -678,8 +678,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <param name="resourceGroup">The name of the resource group/</param>
         /// <param name="resourceType">The resource type.</param>
         /// <param name="resourceName">The resource name.</param>
-        /// <param name="tagName">The tag name.</param>
-        /// <param name="tagValue">The tag value.</param>
+        /// <param name="location">The location name.</param>
         /// <param name="filter">The filter.</param>
         /// <param name="nameContains"></param>
         /// <param name="resourceGroupNameContains"></param>
@@ -688,8 +687,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             string resourceGroup,
             string resourceType,
             string resourceName,
-            string tagName,
-            string tagValue,
+            string location,
             string filter,
             string nameContains = null,
             string resourceGroupNameContains = null)
@@ -731,24 +729,14 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 filterStringBuilder.AppendFormat("name EQ '{0}'", resourceName);
             }
 
-            if (!string.IsNullOrWhiteSpace(tagName))
+            if (!string.IsNullOrWhiteSpace(location))
             {
                 if (filterStringBuilder.Length > 0)
                 {
                     filterStringBuilder.Append(" AND ");
                 }
 
-                filterStringBuilder.AppendFormat("tagName EQ '{0}'", tagName);
-            }
-
-            if (!string.IsNullOrWhiteSpace(tagValue))
-            {
-                if (filterStringBuilder.Length > 0)
-                {
-                    filterStringBuilder.Append(" AND ");
-                }
-
-                filterStringBuilder.AppendFormat("tagValue EQ '{0}'", tagValue);
+                filterStringBuilder.AppendFormat("location EQ '{0}'", location);
             }
 
             if (!string.IsNullOrWhiteSpace(resourceGroupNameContains))
