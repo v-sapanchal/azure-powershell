@@ -72,23 +72,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     "The endpoint for the Azure Resource Manager service is not set. Please report this issue via GitHub or contact Microsoft customer support.");
             }
 
-            //var endpointUri = new Uri(endpoint, UriKind.Absolute);
-            //EndpointUri = endpointUri;
-
-            //// Fetch all Subscriptions
-            //IEnumerable<AzureSubscription> subscriptions = GetAllSubscriptionsByUserContext();
-            //IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptions);
-            //IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = await GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, "MMAWorkspaceMachine");
-            //if (allCmHasMMAWorkspaceMachine?.Count() > 0)
-            //{
-            //    WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
-            //    WriteInformation($"List of Connection Monitors, which has MMAWorkspace endpoints :\n{JsonConvert.SerializeObject(allCmHasMMAWorkspaceMachine, Formatting.Indented)}\n", new string[] { "PSHOST" });
-            //}
-            //else
-            //{
-            //    WriteInformation($"Connection Monitors don't have any MMAWorkspace Endpoints.\n", new string[] { "PSHOST" });
-            //}
-
             if (MMAWorkspaceConnectionMonitors?.Count() > 0)
             {
                 var cmList = MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(MMAWorkspaceConnectionMonitors);

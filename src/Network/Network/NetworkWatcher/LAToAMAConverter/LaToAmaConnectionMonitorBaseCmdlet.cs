@@ -133,33 +133,31 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         {
             List<ConnectionMonitorResourceDetail> cmDetails = new List<ConnectionMonitorResourceDetail>();
 
-            foreach (var subs in subscriptionsList)
+            Parallel.ForEach(subscriptionsList, subs =>
             {
                 PaginatedResponseHelper.ForEach(
-                getFirstPage: async () => await ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
-                getNextPage: async nextLink => await GetNextLink<JObject>(nextLink),
-                cancellationToken: CancellationToken,
-                action: resources =>
-                {
-                    if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out CmResource<JToken> resource))
+                    getFirstPage: async () => await ListResourcesInSubscription(new Guid(subs.Id), CommonUtility.ConnectionMonitorResourceType, ""),
+                    getNextPage: async nextLink => await GetNextLink<JObject>(nextLink),
+                    cancellationToken: CancellationToken,
+                    action: resources =>
                     {
-                        var genericResources = resources.CoalesceEnumerable().Where(res => res != null).SelectArray(res => res.ToResource());
-
-                        foreach (var batch in genericResources.Batch())
+                        if (resources.CoalesceEnumerable().FirstOrDefault().TryConvertTo(out CmResource<JToken> resource))
                         {
-                            var items = batch;
-                            var powerShellObjects = items.SelectArray(genericResource => genericResource.ToJToken());
-                            cmDetails.AddRange(ExtractCmResourceDetails(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList()));
-                            //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
+                            var genericResources = resources.CoalesceEnumerable().Where(res => res != null).SelectArray(res => res.ToResource());
+
+                            foreach (var batch in genericResources.Batch())
+                            {
+                                var items = batch;
+                                var powerShellObjects = items.SelectArray(genericResource => genericResource.ToJToken());
+                                cmDetails.AddRange(ExtractCmResourceDetails(powerShellObjects.Select(s => s.ToObject<JObject>()).ToList()));
+                            }
                         }
-                    }
-                    else
-                    {
-                        cmDetails.AddRange(ExtractCmResourceDetails(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList()));
-                        //WriteInformation($"Connection Monitor Details : {JsonConvert.SerializeObject(cmDetails, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                    }
-                });
-            }
+                        else
+                        {
+                            cmDetails.AddRange(ExtractCmResourceDetails(resources.CoalesceEnumerable().SelectArray(res => res.ToObject<JObject>()).ToList()));
+                        }
+                    });
+            });
 
             return cmDetails;
         }
