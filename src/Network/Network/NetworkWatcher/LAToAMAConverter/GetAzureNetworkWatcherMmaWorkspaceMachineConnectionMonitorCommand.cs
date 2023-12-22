@@ -36,7 +36,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <summary>
         /// Gets or sets the Work Space Id.
         /// </summary>sub
-        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
         [AllowEmptyString]
         public string WorkSpaceId
         {
@@ -66,6 +66,19 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             set;
         }
 
+        /// <summary>
+        /// Gets or sets the CM Endpoint Type MMAWorkspaceNetwork or MMAWorkspaceMachine
+        /// </summary>sub
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "CMEndpointType, fetch only those CM resources has matched endpoint type")]
+        [AllowEmptyString]
+        public string CMEndpointType
+        {
+            get;
+            set;
+        }
+
+
+
         public override void Execute()
         {
             base.Execute();
@@ -81,7 +94,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             }
 
             List<string> subscriptionIds = new List<string>();
-            
+
             if (!string.IsNullOrEmpty(this.SubscriptionId))
             {
                 subscriptionIds.Add(this.SubscriptionId);
@@ -93,7 +106,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             }
 
             IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptionIds, this.Region);
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, CommonUtility.EndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, this.CMEndpointType ?? CommonUtility.EndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
             if (allCmHasMMAWorkspaceMachine?.Count() > 0)
             {
                 WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });

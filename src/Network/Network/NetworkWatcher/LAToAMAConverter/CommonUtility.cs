@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -13,6 +11,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         public const string CustomQueryForArg = "resources | where ['type'] == 'microsoft.hybridcompute/machines' and ['id'] in ({0})";
         public const string ConnectionMonitorResourceType = "Microsoft.Network/networkWatchers/connectionMonitors";
         public const string EndpointResourceType = "MMAWorkspaceMachine";
+        public const string MMAWorkspaceNetworkEndpointResourceType = "MMAWorkspaceNetwork";
         public static TimeSpan TimeSpanForLAQuery { get; } = TimeSpan.FromDays(1);
     }
 }

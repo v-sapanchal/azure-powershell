@@ -8,6 +8,7 @@ using Microsoft.Azure.Commands.Common.Authentication.Models;
 using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
 using Microsoft.Azure.Management.Network.Models;
+using Newtonsoft.Json;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -60,17 +61,22 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 var cmList = MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(MMAWorkspaceConnectionMonitors);
                 // For LA work space logs query
                 var allArcResources = await GetNetworkAgentLAWorkSpaceData(cmList);
-                var allArcResourcesHasData = allArcResources.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
-                // WriteInformation($"{JsonConvert.SerializeObject(allArcResourcesHasData.Select(s => s.Rows.Take(100)), Formatting.None)}", new string[] { "PSHOST" });
+                if (allArcResources?.Any(a => a != null) == true)
+                {
+                    var allArcResourcesHasData = allArcResources?.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
+                    //Need to refactor this code for distinct resource Id and take result
+                    int noOfTakeResult = 100;
+                    var getArcResourceIdsRows = allArcResourcesHasData?.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
+                    string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
+                    string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
 
-                int noOfTakeResult = 100;
-                //Need to refactor this code for distinct resource Id
-                var getArcResourceIdsRows = allArcResourcesHasData.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
-                string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
-                string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
-
-                // For ARG Query to get the ARC resource details
-                QueryForArg(customQueryForArg);
+                    // For ARG Query to get the ARC resource details
+                    QueryForArg(customQueryForArg);
+                }
+                else
+                {
+                    WriteInformation($"No records", new string[] { "PSHOST" });
+                }
             }
         }
     }

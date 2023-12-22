@@ -340,7 +340,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 .Where(networkingData => networkingData != null);
 
             var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
-            return getAllArcResourceDetails.ToList();
+            return getAllArcResourceDetails?.ToList();
         }
 
         private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
@@ -358,9 +358,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     _armClient = null;
                 }
 
-                Management.Internal.Resources.Models.ResourceGroup workSpaceRgDetails = ArmClient.ResourceGroups.Get(workSpaceRG);
-                if (workSpaceRgDetails?.Name == null ||
-                    !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRgDetails.Name, null)?.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId) == true)
+                bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
+                if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId) == true)
                 {
                     WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
                     return null;
