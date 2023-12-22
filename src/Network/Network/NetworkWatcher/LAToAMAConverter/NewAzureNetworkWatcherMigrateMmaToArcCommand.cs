@@ -1,30 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Management.Automation;
 using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
 using Microsoft.Azure.Commands.Common.Authentication;
 using Microsoft.Azure.Commands.Network.Models;
-using Microsoft.Azure.Management.ResourceGraph;
-using Microsoft.Azure.Management.ResourceGraph.Models;
-using Newtonsoft.Json;
 using System.Linq;
-using System.Security;
-using Microsoft.Azure.Commands.Profile.Models;
 using Microsoft.Azure.Commands.Common.Authentication.Models;
 using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
-using Newtonsoft.Json.Linq;
-using System.Threading.Tasks;
-using System.Threading;
 using Microsoft.Azure.Management.Network.Models;
-using Microsoft.Azure.Commands.Common.Strategies;
-using Microsoft.Azure.Management.Network;
-using Microsoft.Rest;
-using System.Net;
-using Microsoft.Azure.Commands.OperationalInsights.Client;
-using Microsoft.Azure.OperationalInsights;
-using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
-using PaginatedResponseHelper = Microsoft.Azure.Commands.ResourceManager.Common.PaginatedResponseHelper;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {

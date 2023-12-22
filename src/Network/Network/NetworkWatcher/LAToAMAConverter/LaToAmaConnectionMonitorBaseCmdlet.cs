@@ -1,5 +1,4 @@
-﻿
-// ----------------------------------------------------------------------------------
+﻿// ----------------------------------------------------------------------------------
 //
 // Copyright Microsoft Corporation
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +12,6 @@
 // limitations under the License.
 // ----------------------------------------------------------------------------------
 
-using AutoMapper;
 using Microsoft.Azure.Commands.Common.Authentication;
 using Microsoft.Azure.Commands.Common.Authentication.Abstractions;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
@@ -21,7 +19,6 @@ using Microsoft.Azure.Commands.Network.Models;
 using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource;
 using Microsoft.Azure.Commands.Profile.Models;
 using Microsoft.Azure.Commands.ResourceManager.Common;
-using Microsoft.Azure.Management.Internal.Resources.Utilities.Models;
 using Microsoft.Azure.Management.Network;
 using Microsoft.Azure.Management.Network.Models;
 using Microsoft.Azure.Management.ResourceGraph.Models;
@@ -31,17 +28,14 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Management.Automation;
 using System.Net;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
-using MNM = Microsoft.Azure.Management.Network.Models;
-using Microsoft.Azure.Management.OperationalInsights.Models;
 using Microsoft.Azure.OperationalInsights;
-using System.Collections;
 using Microsoft.Azure.Commands.OperationalInsights.Client;
 using Microsoft.Rest;
+using Microsoft.Azure.Management.Internal.Resources;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -62,7 +56,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         }
 
         private OperationalInsightsDataClient _operationalInsightsDataClient;
-        internal OperationalInsightsDataClient OperationalInsightsDataClient
+        private OperationalInsightsDataClient OperationalInsightsDataClient
         {
             get
             {
@@ -101,7 +95,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         }
 
         private OperationalInsightsClient operationalInsightsClient;
-        internal OperationalInsightsClient OperationalInsightsClient
+        private OperationalInsightsClient OperationalInsightsClient
         {
             get
             {
@@ -115,6 +109,23 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             set
             {
                 operationalInsightsClient = value;
+            }
+        }
+
+        private ResourceManagementClient _armClient;
+
+        public ResourceManagementClient ArmClient
+        {
+            get
+            {
+                return this._armClient ??
+                       (this._armClient = AzureSession.Instance.ClientFactory.CreateArmClient<ResourceManagementClient>(
+                           context: this.DefaultContext,
+                           endpoint: AzureEnvironment.Endpoint.ResourceManager));
+            }
+            set
+            {
+                this._armClient = value;
             }
         }
 
@@ -284,7 +295,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         public async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
             var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
-            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == "MMAWorkspaceMachine"));
+            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == CommonUtility.EndpointResourceType));
             var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
             return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
         }
@@ -298,7 +309,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             };
             QueryResponse response = rgClient.Resources(request);
             var data = JsonConvert.DeserializeObject<object>(response.Data.ToString());
-            WriteInformation($"Arc resources details:===============================\n{JsonConvert.SerializeObject(data, Formatting.Indented)}\n", new string[] { "PSHOST" });
+            WriteInformation($"======================Arc resources details===============================\n{JsonConvert.SerializeObject(data, Formatting.Indented)}\n", new string[] { "PSHOST" });
         }
 
         /// <summary>
@@ -344,11 +355,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     DefaultContext.Subscription.Id = subscriptionId;
                     _operationalInsightsDataClient = null;
                     operationalInsightsClient = null;
+                    _armClient = null;
                 }
 
-                var listWorkspaces = OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null);
-
-                if (!listWorkspaces.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId))
+                Management.Internal.Resources.Models.ResourceGroup workSpaceRgDetails = ArmClient.ResourceGroups.Get(workSpaceRG);
+                if (workSpaceRgDetails?.Name == null ||
+                    !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRgDetails.Name, null)?.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId) == true)
                 {
                     WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
                     return null;
@@ -458,7 +470,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 GetResourcesClient()
                 .ListNextBatch<TType>(nextLink: nextLink, cancellationToken: CancellationToken.Value);
         }
-
 
         /// <summary>
         /// Gets a new instance of the <see cref="ResourceManagerRestRestClient"/>.
