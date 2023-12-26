@@ -42,79 +42,9 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
     public abstract class LaToAmaConnectionMonitorBaseCmdlet : ConnectionMonitorBaseCmdlet
     {
-        private CancellationTokenSource cancellationSource = null;
         public Action<string> WarningLog;
         public ISubscriptionClientWrapper SubscriptionAndTenantClient = null;
-        /// <summary>
-        /// Gets the cancellation source.
-        /// </summary>
-        internal CancellationToken? CancellationToken
-        {
-            get
-            {
-                return cancellationSource == null ? new CancellationTokenSource().Token : cancellationSource.Token;
-            }
-        }
-
-        private OperationalInsightsDataClient _operationalInsightsDataClient;
-        private OperationalInsightsDataClient OperationalInsightsDataClient
-        {
-            get
-            {
-                if (_operationalInsightsDataClient == null)
-                {
-                    ServiceClientCredentials clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
-
-                    _operationalInsightsDataClient =
-                        AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
-                    _operationalInsightsDataClient.Preferences.IncludeRender = false;
-                    _operationalInsightsDataClient.Preferences.IncludeStatistics = false;
-                    _operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
-
-                    Uri targetUri = null;
-                    DefaultContext.Environment.TryGetEndpointUrl(
-                        AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint, out targetUri);
-                    if (targetUri == null)
-                    {
-                        throw new Exception("Operational Insights is not supported in this Azure Environment");
-                    }
-
-                    _operationalInsightsDataClient.BaseUri = targetUri;
-
-                    if (targetUri.AbsoluteUri.Contains("localhost"))
-                    {
-                        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-                    }
-                }
-
-                return _operationalInsightsDataClient;
-            }
-            set
-            {
-                _operationalInsightsDataClient = value;
-            }
-        }
-
-        private OperationalInsightsClient operationalInsightsClient;
-        private OperationalInsightsClient OperationalInsightsClient
-        {
-            get
-            {
-                if (operationalInsightsClient == null)
-                {
-                    operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
-                }
-
-                return operationalInsightsClient;
-            }
-            set
-            {
-                operationalInsightsClient = value;
-            }
-        }
-
-        private ResourceManagementClient _armClient;
-
+       
         public ResourceManagementClient ArmClient
         {
             get
@@ -548,5 +478,77 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             return array[1];
         }
+
+        private CancellationTokenSource cancellationSource = null;
+
+        /// <summary>
+        /// Gets the cancellation source.
+        /// </summary>
+        internal CancellationToken? CancellationToken
+        {
+            get
+            {
+                return cancellationSource == null ? new CancellationTokenSource().Token : cancellationSource.Token;
+            }
+        }
+
+        private OperationalInsightsDataClient _operationalInsightsDataClient;
+        private OperationalInsightsDataClient OperationalInsightsDataClient
+        {
+            get
+            {
+                if (_operationalInsightsDataClient == null)
+                {
+                    ServiceClientCredentials clientCredentials = AzureSession.Instance.AuthenticationFactory.GetServiceClientCredentials(DefaultContext, AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint);
+
+                    _operationalInsightsDataClient =
+                        AzureSession.Instance.ClientFactory.CreateCustomArmClient<OperationalInsightsDataClient>(clientCredentials);
+                    _operationalInsightsDataClient.Preferences.IncludeRender = false;
+                    _operationalInsightsDataClient.Preferences.IncludeStatistics = false;
+                    _operationalInsightsDataClient.NameHeader = "LogAnalyticsPSClient";
+
+                    Uri targetUri = null;
+                    DefaultContext.Environment.TryGetEndpointUrl(
+                        AzureEnvironment.ExtendedEndpoint.OperationalInsightsEndpoint, out targetUri);
+                    if (targetUri == null)
+                    {
+                        throw new Exception("Operational Insights is not supported in this Azure Environment");
+                    }
+
+                    _operationalInsightsDataClient.BaseUri = targetUri;
+
+                    if (targetUri.AbsoluteUri.Contains("localhost"))
+                    {
+                        ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
+                    }
+                }
+
+                return _operationalInsightsDataClient;
+            }
+            set
+            {
+                _operationalInsightsDataClient = value;
+            }
+        }
+
+        private OperationalInsightsClient operationalInsightsClient;
+        private OperationalInsightsClient OperationalInsightsClient
+        {
+            get
+            {
+                if (operationalInsightsClient == null)
+                {
+                    operationalInsightsClient = new OperationalInsightsClient(DefaultProfile.DefaultContext);
+                }
+
+                return operationalInsightsClient;
+            }
+            set
+            {
+                operationalInsightsClient = value;
+            }
+        }
+
+        private ResourceManagementClient _armClient;
     }
 }
