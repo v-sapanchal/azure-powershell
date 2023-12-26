@@ -1,4 +1,4 @@
-﻿namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource
+﻿namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource.Extensions
 {
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
@@ -42,7 +42,7 @@
 
             if (jtoken.Type != JTokenType.Object)
             {
-                return new PSObject(JTokenExtensions.ConvertPropertyValueForPsObject(propertyValue: jtoken));
+                return new PSObject(ConvertPropertyValueForPsObject(propertyValue: jtoken));
             }
 
             var jobject = (JObject)jtoken;
@@ -57,7 +57,7 @@
             {
                 psObject.Properties.Add(new PSNoteProperty(
                     name: property.Name,
-                    value: JTokenExtensions.ConvertPropertyValueForPsObject(propertyValue: property.Value)));
+                    value: ConvertPropertyValueForPsObject(propertyValue: property.Value)));
             }
 
             return psObject;
@@ -83,14 +83,14 @@
 
                 for (int i = 0; i < array.Length; ++i)
                 {
-                    array[i] = JTokenExtensions.ConvertPropertyValueForPsObject(jArray[i]);
+                    array[i] = ConvertPropertyValueForPsObject(jArray[i]);
                 }
 
                 return array;
             }
 
             Type primitiveType;
-            if (JTokenExtensions.PrimitiveTypeMap.TryGetValue(propertyValue.Type, out primitiveType))
+            if (PrimitiveTypeMap.TryGetValue(propertyValue.Type, out primitiveType))
             {
                 try
                 {

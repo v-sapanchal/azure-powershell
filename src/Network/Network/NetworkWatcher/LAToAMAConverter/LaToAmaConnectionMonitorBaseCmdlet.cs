@@ -36,6 +36,7 @@ using Microsoft.Azure.OperationalInsights;
 using Microsoft.Azure.Commands.OperationalInsights.Client;
 using Microsoft.Rest;
 using Microsoft.Azure.Management.Internal.Resources;
+using Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource.Extensions;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -290,12 +291,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <summary>
         /// Get the ARC resource details from connection monitor list(which contains MMAWorkspaceMachine endpoints)
         /// </summary>
-        /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints</param>
+        /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints or MMAWorkspaceNetwork endpoint</param>
         /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
         public async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
         {
             var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
-            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && w.Type == CommonUtility.EndpointResourceType));
+            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && (w.Type == CommonUtility.EndpointResourceType || w.Type == CommonUtility.MMAWorkspaceNetworkEndpointResourceType)));
             var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
             return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
         }
@@ -313,7 +314,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         }
 
         /// <summary>
-        /// Query for La work space for getting data by passing the Query or using hardcoded one
+        /// For testing the LA workspace data, just pass Query and work space Id guid for getting data by passing the Query or using hardcoded one
         /// </summary>
         public void QueryForLaWorkSpace(string workspaceId, string query)
         {
@@ -321,7 +322,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             OperationalInsightsDataClient.WorkspaceId = workspaceId;
             var data = OperationalInsightsDataClient.Query(query ?? CommonUtility.Query, CommonUtility.TimeSpanForLAQuery, workspaces);
             var resultData = data.Results;
-            //var tabularFormatData = PSQueryResponse.Create(data);
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
         }
 

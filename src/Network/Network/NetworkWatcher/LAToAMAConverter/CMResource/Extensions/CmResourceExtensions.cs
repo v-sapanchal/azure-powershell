@@ -1,13 +1,10 @@
-﻿using Microsoft.Azure.Management.Internal.Resources.Utilities;
-using Microsoft.WindowsAzure.Commands.Utilities.Common;
+﻿using Microsoft.WindowsAzure.Commands.Utilities.Common;
 using Newtonsoft.Json.Linq;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Management.Automation;
-using System.Text;
 
-namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource
+namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource.Extensions
 {
     internal static class CmResourceExtensions
     {
@@ -85,7 +82,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMRes
                 return null;
             }
 
-            return (object)resource.Properties.ToPsObject();
+            return resource.Properties.ToPsObject();
         }
     }
 }

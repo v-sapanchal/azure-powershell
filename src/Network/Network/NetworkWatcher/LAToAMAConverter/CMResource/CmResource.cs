@@ -1,8 +1,6 @@
 ﻿using Microsoft.Azure.Commands.Common.Compute.Version_2018_04.Models;
 using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource
 {

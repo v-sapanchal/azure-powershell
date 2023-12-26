@@ -6,21 +6,20 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Management.Automation;
-using System.Text;
 
-namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource
+namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource.Extensions
 {
     public static class JsonExtensions
     {
         /// <summary>
         /// The JSON media type serializer.
         /// </summary>
-        public static readonly JsonSerializer JsonMediaTypeSerializer = JsonSerializer.Create(JsonExtensions.MediaSerializationSettings);
+        public static readonly JsonSerializer JsonMediaTypeSerializer = JsonSerializer.Create(MediaSerializationSettings);
 
         /// <summary>
         /// The JSON object type serializer.
         /// </summary>
-        public static readonly JsonSerializer JsonObjectTypeSerializer = JsonSerializer.Create(JsonExtensions.ObjectSerializationSettings);
+        public static readonly JsonSerializer JsonObjectTypeSerializer = JsonSerializer.Create(ObjectSerializationSettings);
 
         /// <summary>
         /// The JSON object serialization settings.
@@ -69,14 +68,14 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMRes
         {
             if (jobject == null)
             {
-                result = default(TType);
+                result = default;
                 return true;
             }
 
             try
             {
-                result = jobject.ToObject<TType>(JsonExtensions.JsonMediaTypeSerializer);
-                return !object.Equals(result, default(TType));
+                result = jobject.ToObject<TType>(JsonMediaTypeSerializer);
+                return !Equals(result, default(TType));
             }
             catch (FormatException)
             {
@@ -88,7 +87,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMRes
             {
             }
 
-            result = default(TType);
+            result = default;
             return false;
         }
 
@@ -147,7 +146,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMRes
                 return jArray;
             }
 
-            return JToken.FromObject(obj, JsonExtensions.JsonObjectTypeSerializer);
+            return JToken.FromObject(obj, JsonObjectTypeSerializer);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource
+﻿namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter.CMResource.Extensions
 {
     using System;
     using System.Collections.Generic;
