@@ -30,7 +30,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             set;
         }
 
-        [Parameter(Mandatory = false, ParameterSetName = CommonUtility.ParamSetNameByWorkspaceId, HelpMessage = "The workspace ID.")]
+        [Parameter(Mandatory = false, ParameterSetName = CommonConstants.ParamSetNameByWorkspaceId, HelpMessage = "The workspace ID.")]
         [ValidateNotNullOrEmpty]
         public string WorkspaceId { get; set; }
 
@@ -68,7 +68,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     int noOfTakeResult = 100;
                     var getArcResourceIdsRows = allArcResourcesHasData?.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
                     string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
-                    string customQueryForArg = string.Format(CommonUtility.CustomQueryForArg, combinedArcIds);
+                    string customQueryForArg = string.Format(CommonConstants.CustomQueryForArg, combinedArcIds);
 
                     // For ARG Query to get the ARC resource details
                     QueryForArg(customQueryForArg);

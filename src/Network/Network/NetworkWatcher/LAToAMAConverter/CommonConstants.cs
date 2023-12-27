@@ -2,7 +2,7 @@
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
-    public static class CommonUtility
+    public static class CommonConstants
     {
         public const string ParamSetNameByWorkspaceId = "ByWorkspaceId";
         public const string ParamSetNameByWorkspaceObject = "ByWorkspaceObject";

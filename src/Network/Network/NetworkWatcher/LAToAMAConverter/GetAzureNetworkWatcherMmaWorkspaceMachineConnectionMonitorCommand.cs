@@ -23,6 +23,7 @@ using System.Linq;
 using System.Management.Automation;
 using Microsoft.Azure.Commands.Common.Authentication;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
+using Microsoft.Azure.Management.Internal.Resources.Models;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -36,7 +37,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <summary>
         /// Gets or sets the Work Space Id.
         /// </summary>sub
-        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
+        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
         [AllowEmptyString]
         public string WorkSpaceId
         {
@@ -105,8 +106,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 subscriptionIds = GetAllSubscriptionsByUserContext(_profile, _cache)?.Select(s => s.Id).ToList();
             }
 
-            IEnumerable<ConnectionMonitorResourceDetail> allCMs = GetConnectionMonitorBySubscriptions(subscriptionIds, this.Region);
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, this.CMEndpointType ?? CommonUtility.EndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
+            IEnumerable<GenericResource> allCMs = GetConnectionMonitorBySubscriptions(subscriptionIds, this.Region);
+            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, this.CMEndpointType ?? CommonConstants.EndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
             if (allCmHasMMAWorkspaceMachine?.Count() > 0)
             {
                 WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });
