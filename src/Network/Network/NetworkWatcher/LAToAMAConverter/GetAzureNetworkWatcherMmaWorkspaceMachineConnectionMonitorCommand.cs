@@ -78,8 +78,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             set;
         }
 
-
-
         public override void Execute()
         {
             base.Execute();

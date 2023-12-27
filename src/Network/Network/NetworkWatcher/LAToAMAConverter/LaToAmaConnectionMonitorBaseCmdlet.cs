@@ -75,8 +75,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         protected IEnumerable<GenericResource> GetConnectionMonitorBySubscriptions(IEnumerable<string> subscriptionsList, string region = null)
         {
             List<GenericResource> genericCMResources = new List<GenericResource>();
-            ResourceManagementClient armClient = AzureSession.Instance.ClientFactory
-                .CreateArmClient<ResourceManagementClient>(DefaultProfile.DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
 
             foreach (string subId in subscriptionsList)
             {
@@ -84,11 +82,10 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 if (DefaultContext.Subscription.Id != subId)
                 {
                     DefaultContext.Subscription.Id = subId;
-                    armClient = AzureSession.Instance.ClientFactory
-                        .CreateArmClient<ResourceManagementClient>(DefaultProfile.DefaultContext, AzureEnvironment.Endpoint.ResourceManager);
+                    _armClient = null;
                 }
 
-                List<GenericResource> cmGenericInfoList = armClient.FilterResources(new Management.Internal.Resources.Utilities.Models.FilterResourcesOptions()
+                List<GenericResource> cmGenericInfoList = ArmClient.FilterResources(new Management.Internal.Resources.Utilities.Models.FilterResourcesOptions()
                 { ResourceType = CommonConstants.ConnectionMonitorResourceType });
 
                 genericCMResources.AddRange(cmGenericInfoList);
