@@ -60,8 +60,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             {
                 //var cmList = MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(MMAWorkspaceConnectionMonitors);
                 // For LA work space logs query
-                GetData(MMAWorkspaceConnectionMonitors);
-                
+                var data = await GetData(MMAWorkspaceConnectionMonitors);
+
                 var allArcResources = await GetNetworkAgentLAWorkSpaceData(MMAWorkspaceConnectionMonitors);
 
                 if (allArcResources?.Any(a => a != null) == true)

@@ -37,6 +37,7 @@ using Microsoft.Rest;
 using Microsoft.Azure.Management.Internal.Resources;
 using Microsoft.Azure.Management.Internal.Resources.Utilities;
 using Microsoft.Azure.Management.Internal.Resources.Models;
+using System.Runtime.Caching;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -289,26 +290,31 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
         }
 
-        protected void GetData(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
+        protected async Task<object> GetData(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
         {
             var CmWithMmaEndpoints = mmaMachineCMs.Select(s => new
             {
                 CM = s,
-                Endpoints = s.Endpoints.Where(w => w != null && (w.Type.Equals(CommonConstants.EndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                Endpoints = s.Endpoints.Where(w => w != null && (w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
             || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
             });
 
-            var getCMwithEnpointsAnd = CmWithMmaEndpoints.Select(async s => new
+            // Need to refactor for distinct data
+            var getCMwithEndpointsAndNetworAgentDataList = await Task.WhenAll(CmWithMmaEndpoints.Select(async s => new
             {
-                CmWithEnpoints = s,
+                Cm = s.CM,
+                EndPoints = s.Endpoints,
                 NetworkAgentData = await QueryForLaWorkSpaceNetworkAgentData(s.Endpoints)
-            });
+            }));
+
+            //var filteredCMwithEnpointsAnd = getCMwithEnpointsAndNetworAgentDataList.Where(w => w.NetworkAgentData != null && w.NetworkAgentData.Any());
+            return getCMwithEndpointsAndNetworAgentDataList.ToList();
         }
 
         private IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> GetAllMMAEndpoints(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
         {
             var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
-            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && (w.Type.Equals(CommonConstants.EndpointResourceType, StringComparison.OrdinalIgnoreCase)
+            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && (w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
             || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))));
             return cmAllMMAEndpoints;
         }
@@ -348,9 +354,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                                              .OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg)
                                              .SelectMany(g => g);
 
-            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace))
-                .Where(networkingData => networkingData != null);
-
+            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace));
             var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
             return getAllArcResourceDetails?.ToList();
         }
@@ -359,33 +363,49 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         {
             try
             {
-                IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
-                string subscriptionId = NetworkWatcherUtility.GetSubscription(addressToWorkSpace.ResourceId);
-                string workSpaceRG = NetworkWatcherUtility.GetResourceValue(addressToWorkSpace.ResourceId, "/resourceGroups");
-                if (DefaultContext.Subscription.Id != subscriptionId)
+                if (!EndpointNetworkAgentCache.Contains(addressToWorkSpace?.ResourceId))
                 {
-                    DefaultContext.Subscription.Id = subscriptionId;
-                    _operationalInsightsDataClient = null;
-                    operationalInsightsClient = null;
-                    _armClient = null;
+                    // Need to check for better solution
+                    var cachedData = await GetEndpointNetworkAgentData(addressToWorkSpace);
+                    EndpointNetworkAgentCache.Add(addressToWorkSpace?.ResourceId, cachedData, 
+                        new CacheItemPolicy { AbsoluteExpiration = DateTimeOffset.Now.AddHours(1) });
                 }
 
-                bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
-                if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?
-                    .Any(a => a.ResourceId.Equals(addressToWorkSpace?.ResourceId, StringComparison.OrdinalIgnoreCase)) == true)
-                {
-                    WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                    return null;
-                }
-
-                OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
-                return await OperationalInsightsDataClient.QueryAsync(CommonConstants.Query, CommonConstants.TimeSpanForLAQuery, workspaces);
+                return (Azure.OperationalInsights.Models.QueryResults)EndpointNetworkAgentCache.Get(addressToWorkSpace?.ResourceId);
             }
             catch (Exception ex)
             {
                 WriteInformation($"This is error while performing on this resource Id {addressToWorkSpace.ResourceId}, Error:  {ex}", new string[] { "PSHOST" });
                 return null;
             }
+        }
+
+        private async Task<Azure.OperationalInsights.Models.QueryResults> GetEndpointNetworkAgentData(PSNetworkWatcherConnectionMonitorEndpointObject addressToWorkSpace)
+        {
+            IList<string> workspaces = new List<string>() { addressToWorkSpace.ResourceId };
+            string subscriptionId = NetworkWatcherUtility.GetSubscription(addressToWorkSpace.ResourceId);
+            string workSpaceRG = NetworkWatcherUtility.GetResourceValue(addressToWorkSpace.ResourceId, "/resourceGroups");
+            if (DefaultContext.Subscription.Id != subscriptionId)
+            {
+                DefaultContext.Subscription.Id = subscriptionId;
+                _operationalInsightsDataClient = null;
+                operationalInsightsClient = null;
+                _armClient = null;
+            }
+
+            bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
+            if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?
+                .Any(a => a.ResourceId.Equals(addressToWorkSpace?.ResourceId, StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
+                return null;
+            }
+
+
+
+
+            OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
+            return await OperationalInsightsDataClient.QueryAsync(CommonConstants.Query, CommonConstants.TimeSpanForLAQuery, workspaces);
         }
 
         /// <summary>
@@ -580,5 +600,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         }
 
         private ResourceManagementClient _armClient;
+
+        private MemoryCache EndpointNetworkAgentCache = MemoryCache.Default;
+
     }
 }
