@@ -6,7 +6,7 @@ using System.Text;
 
 namespace Microsoft.Azure.Commands.Network.Models
 {
-    public class PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor : PSConnectionMonitorResult
+    public class PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor : PSConnectionMonitorResultV2
     {
         [JsonProperty(Order = 1)]
         public new string Id { get; set; }

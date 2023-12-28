@@ -110,14 +110,51 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 Type = connectionMonitor.Type,
                 Location = connectionMonitor.Location,
                 StartTime = connectionMonitor.StartTime,
+                Tags = new Dictionary<string, string>(),
                 ConnectionMonitorType = connectionMonitor.ConnectionMonitorType,
-                Endpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>()
+                Notes = connectionMonitor.Notes,
+                Endpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>(),
+                TestGroups = new List<PSNetworkWatcherConnectionMonitorTestGroupObject>()
             };
+
+            if (connectionMonitor.Tags != null)
+            {
+                foreach (KeyValuePair<string, string> KeyValue in connectionMonitor.Tags)
+                {
+                    psMmaWorkspaceMachineConnectionMonitor.Tags.Add(KeyValue.Key, KeyValue.Value);
+                }
+            }
+
+            if (connectionMonitor.Outputs != null)
+            {
+                psMmaWorkspaceMachineConnectionMonitor.Outputs = new List<PSNetworkWatcherConnectionMonitorOutputObject>();
+                foreach (ConnectionMonitorOutput output in connectionMonitor.Outputs)
+                {
+                    psMmaWorkspaceMachineConnectionMonitor.Outputs.Add(
+                        new PSNetworkWatcherConnectionMonitorOutputObject()
+                        {
+                            Type = output.Type,
+                            WorkspaceSettings = new PSConnectionMonitorWorkspaceSettings()
+                            {
+                                WorkspaceResourceId = output.WorkspaceSettings?.WorkspaceResourceId
+                            }
+                        });
+                }
+            }
 
             if (connectionMonitor.TestGroups != null)
             {
                 foreach (ConnectionMonitorTestGroup testGroup in connectionMonitor.TestGroups)
                 {
+                    PSNetworkWatcherConnectionMonitorTestGroupObject testGroupObject = new PSNetworkWatcherConnectionMonitorTestGroupObject()
+                    {
+                        Name = testGroup.Name,
+                        Disable = testGroup.Disable,
+                        TestConfigurations = new List<PSNetworkWatcherConnectionMonitorTestConfigurationObject>(),
+                        Sources = new List<PSNetworkWatcherConnectionMonitorEndpointObject>(),
+                        Destinations = new List<PSNetworkWatcherConnectionMonitorEndpointObject>()
+                    };
+
                     if (testGroup.Sources != null)
                     {
                         foreach (string sourceEndpointName in testGroup.Sources)
@@ -127,6 +164,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                             PSNetworkWatcherConnectionMonitorEndpointObject EndpointObject =
                                 NetworkResourceManagerProfile.Mapper.Map<PSNetworkWatcherConnectionMonitorEndpointObject>(sourceEndpoint);
 
+                            testGroupObject.Sources.Add(EndpointObject);
                             psMmaWorkspaceMachineConnectionMonitor.Endpoints.Add(EndpointObject);
                         }
                     }
@@ -140,9 +178,37 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                             PSNetworkWatcherConnectionMonitorEndpointObject EndpointObject =
                                 NetworkResourceManagerProfile.Mapper.Map<PSNetworkWatcherConnectionMonitorEndpointObject>(destinationEndpoint);
 
+                            testGroupObject.Destinations.Add(EndpointObject);
                             psMmaWorkspaceMachineConnectionMonitor.Endpoints.Add(EndpointObject);
                         }
                     }
+
+                    // Test Configuration
+                    if (testGroup.TestConfigurations != null)
+                    {
+                        foreach (string testConfigurationName in testGroup.TestConfigurations)
+                        {
+                            ConnectionMonitorTestConfiguration testConfiguration = GetTestConfigurationByName(connectionMonitor.TestConfigurations, testConfigurationName);
+
+                            PSNetworkWatcherConnectionMonitorTestConfigurationObject testConfigurationObject = new PSNetworkWatcherConnectionMonitorTestConfigurationObject()
+                            {
+                                Name = testConfiguration.Name,
+                                PreferredIPVersion = testConfiguration.PreferredIPVersion,
+                                TestFrequencySec = testConfiguration.TestFrequencySec,
+                                SuccessThreshold = testConfiguration.SuccessThreshold == null ? null :
+                                    new PSNetworkWatcherConnectionMonitorSuccessThreshold()
+                                    {
+                                        ChecksFailedPercent = testConfiguration.SuccessThreshold.ChecksFailedPercent,
+                                        RoundTripTimeMs = testConfiguration.SuccessThreshold.RoundTripTimeMs
+                                    },
+                                ProtocolConfiguration = this.GetPSProtocolConfiguration(testConfiguration)
+                            };
+
+                            testGroupObject.TestConfigurations.Add(testConfigurationObject);
+                        }
+                    }
+
+                    psMmaWorkspaceMachineConnectionMonitor.TestGroups.Add(testGroupObject);
                 }
             }
 
@@ -168,7 +234,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                             NetworkResourceManagerProfile.Mapper.Map<ConnectionMonitorEndpoint>(endpoint);
 
                         connectionMonitorResult.Endpoints.Add(EndpointObject);
-
                     }
                 }
 
@@ -217,12 +282,35 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// </summary>
         /// <param name="mmaMachineCMs">All CMs which contains MMAWorkspaceMachine endpoints or MMAWorkspaceNetwork endpoint</param>
         /// <returns>OperationalInsightsQueryResults data which contains ARC resource details</returns>
-        protected async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<ConnectionMonitorResult> mmaMachineCMs)
+        protected async Task<List<Azure.OperationalInsights.Models.QueryResults>> GetNetworkAgentLAWorkSpaceData(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
         {
-            var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
-            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && (w.Type == CommonConstants.EndpointResourceType || w.Type == CommonConstants.MMAWorkspaceNetworkEndpointResourceType)));
+            IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> cmAllMMAEndpoints = GetAllMMAEndpoints(mmaMachineCMs);
             var getDistinctWorkSpaceAndAddress = cmAllMMAEndpoints?.GroupBy(g => new { g.ResourceId, g.Address }).Select(s => s.FirstOrDefault());
             return await QueryForLaWorkSpaceNetworkAgentData(getDistinctWorkSpaceAndAddress);
+        }
+
+        protected void GetData(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
+        {
+            var CmWithMmaEndpoints = mmaMachineCMs.Select(s => new
+            {
+                CM = s,
+                Endpoints = s.Endpoints.Where(w => w != null && (w.Type.Equals(CommonConstants.EndpointResourceType, StringComparison.OrdinalIgnoreCase)
+            || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
+            });
+
+            var getCMwithEnpointsAnd = CmWithMmaEndpoints.Select(async s => new
+            {
+                CmWithEnpoints = s,
+                NetworkAgentData = await QueryForLaWorkSpaceNetworkAgentData(s.Endpoints)
+            });
+        }
+
+        private IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> GetAllMMAEndpoints(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
+        {
+            var cmEndPoints = mmaMachineCMs?.Select(s => s.Endpoints);
+            var cmAllMMAEndpoints = cmEndPoints?.SelectMany(s => s.Where(w => w != null && (w.Type.Equals(CommonConstants.EndpointResourceType, StringComparison.OrdinalIgnoreCase)
+            || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))));
+            return cmAllMMAEndpoints;
         }
 
         protected void QueryForArg(string query)
@@ -249,7 +337,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             WriteInformation($"{JsonConvert.SerializeObject(resultData.ToList(), Formatting.Indented)}\n", new string[] { "PSHOST" });
         }
 
-        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<ConnectionMonitorEndpoint> allDistantCMEndpoints)
+        private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> allDistantCMEndpoints)
         {
             var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
                                              .GroupBy(g => new
@@ -267,7 +355,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             return getAllArcResourceDetails?.ToList();
         }
 
-        private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(ConnectionMonitorEndpoint addressToWorkSpace)
+        private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(PSNetworkWatcherConnectionMonitorEndpointObject addressToWorkSpace)
         {
             try
             {
@@ -283,7 +371,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 }
 
                 bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
-                if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?.Any(a => a.ResourceId == addressToWorkSpace?.ResourceId) == true)
+                if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?
+                    .Any(a => a.ResourceId.Equals(addressToWorkSpace?.ResourceId, StringComparison.OrdinalIgnoreCase)) == true)
                 {
                     WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
                     return null;
@@ -374,6 +463,63 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             }
 
             return array[1];
+        }
+
+        private PSNetworkWatcherConnectionMonitorProtocolConfiguration GetPSProtocolConfiguration(ConnectionMonitorTestConfiguration testConfiguration)
+        {
+            if (testConfiguration.TcpConfiguration != null)
+            {
+                return new PSNetworkWatcherConnectionMonitorTcpConfiguration()
+                {
+                    Port = testConfiguration.TcpConfiguration.Port,
+                    DisableTraceRoute = testConfiguration.TcpConfiguration.DisableTraceRoute,
+                    DestinationPortBehavior = testConfiguration.TcpConfiguration.DestinationPortBehavior
+                };
+            }
+
+            if (testConfiguration.HttpConfiguration != null)
+            {
+                return new PSNetworkWatcherConnectionMonitorHttpConfiguration()
+                {
+                    Port = testConfiguration.HttpConfiguration.Port,
+                    Method = testConfiguration.HttpConfiguration.Method,
+                    Path = testConfiguration.HttpConfiguration.Path,
+                    PreferHTTPS = testConfiguration.HttpConfiguration.PreferHTTPS,
+                    ValidStatusCodeRanges = testConfiguration.HttpConfiguration.ValidStatusCodeRanges?.ToList(),
+                    RequestHeaders = this.GetPSRequestHeaders(testConfiguration.HttpConfiguration.RequestHeaders?.ToList())
+                };
+            }
+
+            if (testConfiguration.IcmpConfiguration != null)
+            {
+                return new PSNetworkWatcherConnectionMonitorIcmpConfiguration()
+                {
+                    DisableTraceRoute = testConfiguration.IcmpConfiguration.DisableTraceRoute
+                };
+            }
+
+            return null;
+        }
+
+        private List<PSHTTPHeader> GetPSRequestHeaders(List<HTTPHeader> headers)
+        {
+            if (headers == null)
+            {
+                return null;
+            }
+
+            List<PSHTTPHeader> psHeaders = new List<PSHTTPHeader>();
+            foreach (HTTPHeader header in headers)
+            {
+                psHeaders.Add(
+                    new PSHTTPHeader()
+                    {
+                        Name = header.Name,
+                        Value = header.Value
+                    });
+            }
+
+            return psHeaders;
         }
 
         private OperationalInsightsDataClient _operationalInsightsDataClient;

@@ -1,0 +1,89 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2014-04-01-preview/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "name": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "object"
+    },
+    "properties": {
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    }
+  },
+  "resources": [
+    {
+      "apiVersion": "2019-07-01",
+      "name": "TestLA-AMA-CM2",
+      "location": "eastus",
+      "tags": "[parameters('tags')]",
+      "type": "Microsoft.Network/networkWatchers/connectionMonitors",
+      "properties": {
+        "provisioningState": "Succeeded",
+        "resourceGuid": "2c73cc28-273f-460c-a2e5-f2cb42fc517b",
+        "endpoints": [
+          {
+            "name": "tasks.office.com",
+            "type": "ExternalAddress",
+            "address": "tasks.office.com"
+          },
+          {
+            "name": "vakarana-WCUS-Dev_vakarana.fareast.corp.microsoft.com",
+            "type": "MMAWorkspaceMachine",
+            "resourceId": "/subscriptions/9cece3e3-0f7d-47ca-af0e-9772773f90b7/resourceGroups/vakarana-rg/providers/Microsoft.OperationalInsights/workspaces/vakarana-WCUS-Dev",
+            "address": "vakarana.fareast.corp.microsoft.com"
+          }
+        ],
+        "testConfigurations": [
+          {
+            "name": "testConfig",
+            "testFrequencySec": 30,
+            "protocol": "Http",
+            "httpConfiguration": {
+              "port": 80,
+              "method": "Get",
+              "path": "",
+              "requestHeaders": [],
+              "validStatusCodeRanges": [],
+              "preferHTTPS": false
+            },
+            "successThreshold": {}
+          }
+        ],
+        "testGroups": [
+          {
+            "name": "testgrp",
+            "disable": false,
+            "testConfigurations": [
+              "testConfig"
+            ],
+            "sources": [
+              "vakarana-WCUS-Dev_vakarana.fareast.corp.microsoft.com"
+            ],
+            "destinations": [
+              "tasks.office.com"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "type": "Workspace",
+            "workspaceSettings": {
+              "workspaceResourceId": "/subscriptions/9cece3e3-0f7d-47ca-af0e-9772773f90b7/resourceGroups/RG-Chary/providers/Microsoft.OperationalInsights/workspaces/la-withnpmsolution"
+            }
+          }
+        ],
+        "startTime": "2023-12-11T18:26:45.7870036Z",
+        "connectionMonitorType": "MultiEndpoint"
+      },
+      "id": "/subscriptions/9cece3e3-0f7d-47ca-af0e-9772773f90b7/resourceGroups/networkwatcherrg/providers/Microsoft.Network/networkWatchers/NetworkWatcher_eastus/connectionMonitors/TestLA-AMA-CM2"
+    }
+  ]
+}
