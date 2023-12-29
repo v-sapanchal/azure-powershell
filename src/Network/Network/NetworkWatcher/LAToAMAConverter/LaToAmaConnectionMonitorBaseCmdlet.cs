@@ -38,6 +38,7 @@ using Microsoft.Azure.Management.Internal.Resources;
 using Microsoft.Azure.Management.Internal.Resources.Utilities;
 using Microsoft.Azure.Management.Internal.Resources.Models;
 using System.Runtime.Caching;
+using Microsoft.WindowsAzure.Commands.Utilities.Common;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -300,15 +301,47 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             });
 
             // Need to refactor for distinct data
-            var getCMwithEndpointsAndNetworAgentDataList = await Task.WhenAll(CmWithMmaEndpoints.Select(async s => new
+            var getCMwithEndpointsAndNetworkAgentDataList = await Task.WhenAll(CmWithMmaEndpoints.Select(async s => new
             {
                 Cm = s.CM,
-                EndPoints = s.Endpoints,
-                NetworkAgentData = await QueryForLaWorkSpaceNetworkAgentData(s.Endpoints)
+                EndpointWithNetworkAgentData = await QueryForLaWorkSpaceNetworkAgentData1(s.Endpoints)
             }));
 
+            //IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> endpointsGroupedBySubsAndRG = GetGroupedByDistinctEndpoints(allDistantCMEndpoints);
             //var filteredCMwithEnpointsAnd = getCMwithEnpointsAndNetworAgentDataList.Where(w => w.NetworkAgentData != null && w.NetworkAgentData.Any());
-            return getCMwithEndpointsAndNetworAgentDataList.ToList();
+
+            //var modifyCMwithArc = getCMwithEndpointsAndNetworkAgentDataList.ForEach(data =>
+            //{
+            //    data.Cm.TestGroups.Where(w => data.EndPoints.Any(a => a.ResourceId.Equals()))
+
+
+            //});
+
+
+            return getCMwithEndpointsAndNetworkAgentDataList.ToList();
+        }
+
+
+        private void UpdateTestGroupsSourceEndpoints(PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor connectionMonitor, Dictionary<string, Azure.OperationalInsights.Models.QueryResults> dictEndpointToQueryResult)
+        {
+            var testGrps = connectionMonitor.TestGroups;
+            foreach (var testGrp in testGrps)
+            {
+                if (testGrp?.Sources.Count > 0)
+                {
+                    //testGrp.Sources.ForEach(s => { dictEndpointToQueryResult.ContainsKey(s.ResourceId) });
+
+                    foreach (var source in testGrp?.Sources)
+                    {
+
+                    }
+                }
+
+                if (testGrp?.Destinations.Count > 0)
+                {
+
+                }
+            }
         }
 
         private IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> GetAllMMAEndpoints(IEnumerable<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> mmaMachineCMs)
@@ -345,18 +378,31 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
         private async Task<List<Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData(IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> allDistantCMEndpoints)
         {
-            var endpointsGroupedBySubsAndRG = allDistantCMEndpoints?
-                                             .GroupBy(g => new
-                                             {
-                                                 subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
-                                                 rg = NetworkWatcherUtility.GetResourceValue(g.ResourceId, "/resourceGroups")
-                                             })
-                                             .OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg)
-                                             .SelectMany(g => g);
+            IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> endpointsGroupedBySubsAndRG = GetGroupedByDistinctEndpoints(allDistantCMEndpoints);
 
             var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(addressToWorkSpace => GetNetworkingDataAsync(addressToWorkSpace));
             var getAllArcResourceDetails = await Task.WhenAll(arcResourceIdDetails);
             return getAllArcResourceDetails?.ToList();
+        }
+
+        private async Task<Dictionary<string, Azure.OperationalInsights.Models.QueryResults>> QueryForLaWorkSpaceNetworkAgentData1(IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> allDistantCMEndpoints)
+        {
+            IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> endpointsGroupedBySubsAndRG = GetGroupedByDistinctEndpoints(allDistantCMEndpoints);
+
+            var arcResourceIdDetails = endpointsGroupedBySubsAndRG?.Select(async addressToWorkSpace => new { Endpoint = addressToWorkSpace, QueryResult = await GetNetworkingDataAsync(addressToWorkSpace) });
+            var res = await Task.WhenAll(arcResourceIdDetails);
+
+            return res.ToDictionary(x => x.Endpoint.ResourceId, x => x.QueryResult);
+        }
+
+
+        private static IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> GetGroupedByDistinctEndpoints(IEnumerable<PSNetworkWatcherConnectionMonitorEndpointObject> allDistantCMEndpoints)
+        {
+            return allDistantCMEndpoints?.GroupBy(g => new
+            {
+                subs = NetworkWatcherUtility.GetSubscription(g.ResourceId),
+                rg = NetworkWatcherUtility.GetResourceValue(g.ResourceId, "/resourceGroups")
+            }).OrderBy(g => g.Key.subs).ThenBy(g => g.Key.rg).SelectMany(g => g).Distinct();
         }
 
         private async Task<Azure.OperationalInsights.Models.QueryResults> GetNetworkingDataAsync(PSNetworkWatcherConnectionMonitorEndpointObject addressToWorkSpace)
@@ -365,9 +411,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             {
                 if (!EndpointNetworkAgentCache.Contains(addressToWorkSpace?.ResourceId))
                 {
-                    // Need to check for better solution
-                    var cachedData = await GetEndpointNetworkAgentData(addressToWorkSpace);
-                    EndpointNetworkAgentCache.Add(addressToWorkSpace?.ResourceId, cachedData, 
+                    // Need to check for better solution, to remove cache stampede issue
+                    EndpointNetworkAgentCache.Add(addressToWorkSpace?.ResourceId, await GetEndpointNetworkAgentData(addressToWorkSpace),
                         new CacheItemPolicy { AbsoluteExpiration = DateTimeOffset.Now.AddHours(1) });
                 }
 
@@ -400,9 +445,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
                 return null;
             }
-
-
-
 
             OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
             return await OperationalInsightsDataClient.QueryAsync(CommonConstants.Query, CommonConstants.TimeSpanForLAQuery, workspaces);
