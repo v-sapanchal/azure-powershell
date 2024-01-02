@@ -60,8 +60,11 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             {
                 //var cmList = MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(MMAWorkspaceConnectionMonitors);
                 // For LA work space logs query
-                var data = await GetData(MMAWorkspaceConnectionMonitors);
+                var MigratedCM = await MigrateCMs(MMAWorkspaceConnectionMonitors);
+                WriteObject(MigratedCM);
 
+
+                #region Old code (will remove once code manage
                 var allArcResources = await GetNetworkAgentLAWorkSpaceData(MMAWorkspaceConnectionMonitors);
 
                 if (allArcResources?.Any(a => a != null) == true)
@@ -80,6 +83,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 {
                     WriteInformation($"No records", new string[] { "PSHOST" });
                 }
+                #endregion
             }
         }
     }
