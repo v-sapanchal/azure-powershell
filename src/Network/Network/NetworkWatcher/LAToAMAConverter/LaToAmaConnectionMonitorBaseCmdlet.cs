@@ -275,7 +275,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                         Name = testGroup.Name,
                         Disable = testGroup.Disable,
                         Sources = new List<string>(),
-                        Destinations = new List<string>()
+                        Destinations = new List<string>(),
+                        TestConfigurations = new List<string>()
                     };
                     
                     foreach (PSNetworkWatcherConnectionMonitorEndpointObject sourceEndpoint in testGroup?.Sources)
@@ -351,7 +352,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             return connectionMonitorResult;
         }
-
 
         /// <summary>
         /// Get All the CMs which has MMAWorkspaceMachine as endpoint
@@ -706,13 +706,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 _armClient = null;
             }
 
-            bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
-            if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?
-                .Any(a => a.ResourceId.Equals(addressToWorkSpace?.ResourceId, StringComparison.OrdinalIgnoreCase)) == true)
-            {
-                WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
-                return null;
-            }
+                bool isRGExists = ArmClient.ResourceGroups.CheckExistence(workSpaceRG);
+                if (!isRGExists || !OperationalInsightsClient.FilterPSWorkspaces(workSpaceRG, null)?.Any(a => a.ResourceId.Equals(addressToWorkSpace?.ResourceId, StringComparison.InvariantCultureIgnoreCase)) == true)
+                {
+                    WriteInformation($"Please remove or update this endpoint, this workspace resource '{addressToWorkSpace.ResourceId}' doesn't exist and it's being used in this endpoint.\n Endpoint Details :\n{JsonConvert.SerializeObject(addressToWorkSpace, Formatting.Indented)}\n", new string[] { "PSHOST" });
+                    return null;
+                }
 
             OperationalInsightsDataClient.WorkspaceId = addressToWorkSpace.ResourceId;
             return await OperationalInsightsDataClient.QueryAsync(CommonConstants.Query, CommonConstants.TimeSpanForLAQuery, workspaces);
