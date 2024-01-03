@@ -309,51 +309,105 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             WriteInformation($"Before update\n{JsonConvert.SerializeObject(getCmWithEndpointsAndNetworkAgentDataList, Formatting.Indented)}\n", new string[] { "PSHOST" });
 
+            List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> cmList = new List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor>();
+            List<PSNetworkWatcherConnectionMonitorTestGroupObject> testGroups = new List<PSNetworkWatcherConnectionMonitorTestGroupObject>();
+            Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>> cmDict
+                = new Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>>();
+            Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>> cmDictMigratable
+                = new Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>>();
+            Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>> cmDictNotMigratable
+                = new Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>>();
+
             getCmWithEndpointsAndNetworkAgentDataList.ForEach(data =>
             {
                 // For testing purpose: fetching those data which are not present in Arc
-                var testGrpNotMigratableSourceEndpoint = data.Cm.TestGroups.
-                SelectMany(s => s.Sources.Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
-                || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
-                .Where(iw => !data.EndpointWithNetworkAgentData.Any(a => a.Key.Equals(iw.ResourceId)));
+                //var testGrpNotMigratableSourceEndpoint = data.Cm.TestGroups.
+                //SelectMany(s => s.Sources.Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                //|| w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
+                //.Where(iw => !data.EndpointWithNetworkAgentData.Any(a => a.Key.Equals(iw.ResourceId)));
 
+                List<PSNetworkWatcherConnectionMonitorTestGroupObject> copyableTestGrps = new List<PSNetworkWatcherConnectionMonitorTestGroupObject>();
 
                 //Destination update
-                data.Cm.TestGroups.SelectMany(testGroup => testGroup.Destinations).Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
-            || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))
-                .ForEach(destination =>
+                data.Cm.TestGroups.Where(w => w.Destinations.Any(iw => iw.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                || iw.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
+                .ForEach(testGrp =>
                 {
-                    var resourceId = data.EndpointWithNetworkAgentData
-                        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("ResourceId", 1))
-                        .FirstOrDefault();
-                    var name = data.EndpointWithNetworkAgentData
-                        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("AgentFqdn", 1))
-                        .FirstOrDefault();
-                    string resType = "AzureArcVM";
+                    PSNetworkWatcherConnectionMonitorTestGroupObject copyableTestGrp = testGrp;
+                    List<PSNetworkWatcherConnectionMonitorEndpointObject> copyableEndpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
+                    copyableTestGrp.Destinations = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
 
-                    destination.ResourceId = resourceId;
-                    destination.Name = name;
-                    destination.Type = resType;
+                    testGrp.Destinations
+                    .ForEach(destination =>
+                    {
+                        if (data.EndpointWithNetworkAgentData.ContainsKey(destination.ResourceId)
+                        && data.EndpointWithNetworkAgentData[destination.ResourceId]?.Tables?.Count > 0
+                        && data.EndpointWithNetworkAgentData[destination.ResourceId]?.Tables.Any(a => a.Rows.Count > 0) == true)
+                        {
+                            var tbl = data?.EndpointWithNetworkAgentData[destination.ResourceId]?.Tables;
+                            var resourceId = tbl?.GetRowsByColumnName("ResourceId", 1)?.FirstOrDefault();
+                            var name = tbl?.GetRowsByColumnName("AgentFqdn", 1)?.FirstOrDefault();
+
+                            destination.ResourceId = resourceId;
+                            destination.Name = name;
+                            destination.Type = "AzureArcVM";
+                        }
+                        else
+                        {
+                            copyableEndpoints.Add(destination);
+                            copyableTestGrp.Destinations.AddRange(copyableEndpoints);
+                            copyableTestGrps.Add(copyableTestGrp);
+                            if (cmDictMigratable.Any(a => a.Key.Id.Equals(data.Cm.Id, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                cmDictMigratable.Add(data.Cm, copyableTestGrps);
+                            }
+                        }
+                    });
                 });
+
+                //data.Cm.TestGroups.SelectMany(testGroup => testGroup.Destinations).Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                //|| w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))
+                //.ForEach(destination =>
+                //{
+                //    if (data.EndpointWithNetworkAgentData.ContainsKey(destination.ResourceId)
+                //    && data.EndpointWithNetworkAgentData[destination.ResourceId]?.Tables?.Count > 0
+                //    && data.EndpointWithNetworkAgentData[destination.ResourceId]?.Tables.Any(a => a.Rows.Count > 0) == true)
+                //    {
+                //        var tbl = data.EndpointWithNetworkAgentData[destination.ResourceId].Tables;
+                //        var resourceId = tbl?.GetRowsByColumnName("ResourceId", 1)?.FirstOrDefault();
+                //        var name = tbl?.GetRowsByColumnName("AgentFqdn", 1)?.FirstOrDefault();
+
+                //        destination.ResourceId = resourceId;
+                //        destination.Name = name;
+                //        destination.Type = "AzureArcVM";
+                //    }
+                //    else
+                //    {
+                //        migratableTestGrp.
+                //        //cmDictMigratable.Add(data.Cm,)
+                //    }
+
+
+                //});
 
                 //Source Update
 
-                data.Cm.TestGroups.SelectMany(testGroup => testGroup.Sources).Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
-            || w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))
-                .ForEach(source =>
-                {
-                    var resourceId = data.EndpointWithNetworkAgentData
-                        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("ResourceId", 1))
-                        .FirstOrDefault();
-                    var name = data.EndpointWithNetworkAgentData
-                        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("AgentFqdn", 1))
-                        .FirstOrDefault();
-                    string resType = "AzureArcVM";
+                //data.Cm.TestGroups.SelectMany(testGroup => testGroup.Sources).Where(w => w.Type.Equals(CommonConstants.MMAWorkspaceMachineEndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                //|| w.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase))
+                //.ForEach(source =>
+                //{
+                //    var resourceId = data.EndpointWithNetworkAgentData
+                //        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("ResourceId", 1))
+                //        .FirstOrDefault();
+                //    var name = data.EndpointWithNetworkAgentData
+                //        .SelectMany(en => en.Value.Tables.GetRowsByColumnName("AgentFqdn", 1))
+                //        .FirstOrDefault();
+                //    string resType = "AzureArcVM";
 
-                    source.ResourceId = resourceId;
-                    source.Name = name;
-                    source.Type = resType;
-                });
+                //    source.ResourceId = resourceId;
+                //    source.Name = name;
+                //    source.Type = resType;
+                //});
 
             });
 
