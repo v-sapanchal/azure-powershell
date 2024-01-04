@@ -97,7 +97,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             if (!string.IsNullOrEmpty(region))
             {
-                genericCMResources.Where(w => w?.Location == region);
+                genericCMResources.Where(w => w?.Location.Equals(region, StringComparison.OrdinalIgnoreCase) == true);
             }
 
             return genericCMResources;
@@ -273,11 +273,13 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             // if we remove workspace id as mandatory param
             if (workSpaceId != null)
             {
-                return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType && a.ResourceId == workSpaceId)).ToList();
+                return listConnectionMonitorResult?.Where(w => w.Endpoints?.Any(a => a.Type?.Equals(endpointType, StringComparison.OrdinalIgnoreCase) == true
+                && a.ResourceId?.Equals(workSpaceId, StringComparison.OrdinalIgnoreCase) == true) == true).ToList();
             }
             else
             {
-                return listConnectionMonitorResult.Where(w => w.Endpoints.Any(a => a.Type == endpointType)).ToList();
+                return listConnectionMonitorResult
+                .Where(w => w.Endpoints?.Any(a => a.Type?.Equals(endpointType, StringComparison.OrdinalIgnoreCase) == true) == true).ToList();
             }
         }
 
@@ -413,7 +415,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             });
 
             WriteInformation($"After Modification in CMs: \n{JsonConvert.SerializeObject(getCmWithEndpointsAndNetworkAgentDataList, Formatting.Indented)}\n", new string[] { "PSHOST" });
-           
+
             // Combined both list (Updating existing CM and Newly created CM(with '_PSMigrate' suffix)
             var updatedCMs = getCmWithEndpointsAndNetworkAgentDataList.Select(s => s.Cm).ToList();
             var combinedList = updatedCMs?.Concat(copyableCmList).ToList();
@@ -641,7 +643,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         private IAccessToken AcquireAccessToken(IAzureAccount account, IAzureEnvironment environment, string tenantId, SecureString password,
            string promptBehavior, Action<string> promptAction, IAzureTokenCache cache, string resourceId = AzureEnvironment.Endpoint.ActiveDirectoryServiceEndpointResourceId)
         {
-            if (account.Type == AzureAccount.AccountType.AccessToken)
+            if (account.Type.Equals(AzureAccount.AccountType.AccessToken, StringComparison.OrdinalIgnoreCase))
             {
                 tenantId = tenantId ?? account.GetCommonTenant();
                 return new SimpleAccessToken(account, tenantId);
