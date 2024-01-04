@@ -38,7 +38,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         /// <summary>
         /// Gets or sets the Work Space Id.
         /// </summary>sub
-        [Parameter(Mandatory = true, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
+        [Parameter(Mandatory = false, Position = 0, ValueFromPipelineByPropertyName = true, HelpMessage = "Workspace Id, fetch only those CM resources which has LA workspace endpoints")]
         [AllowEmptyString]
         public string WorkSpaceId
         {

@@ -62,28 +62,27 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 // For LA work space logs query
                 var MigratedCM = await MigrateCMs(MMAWorkspaceConnectionMonitors);
                 WriteObject(MigratedCM);
+                
+                //#region Old code (will remove once code manage
+                //var allArcResources = await GetNetworkAgentLAWorkSpaceData(MMAWorkspaceConnectionMonitors);
 
+                //if (allArcResources?.Any(a => a != null) == true)
+                //{
+                //    var allArcResourcesHasData = allArcResources?.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
+                //    //Need to refactor this code for distinct resource Id and take result
+                //    int noOfTakeResult = 100;
+                //    var getArcResourceIdsRows = allArcResourcesHasData?.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
+                //    string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
+                //    string customQueryForArg = string.Format(CommonConstants.CustomQueryForArg, combinedArcIds);
 
-                #region Old code (will remove once code manage
-                var allArcResources = await GetNetworkAgentLAWorkSpaceData(MMAWorkspaceConnectionMonitors);
-
-                if (allArcResources?.Any(a => a != null) == true)
-                {
-                    var allArcResourcesHasData = allArcResources?.Where(w => w?.Tables?.Count > 0).SelectMany(s => s.Tables).Where(w => w.Rows.Count > 0);
-                    //Need to refactor this code for distinct resource Id and take result
-                    int noOfTakeResult = 100;
-                    var getArcResourceIdsRows = allArcResourcesHasData?.SelectMany(s => s.Rows.Take(noOfTakeResult).Select(row => $"'{row[s.Columns.IndexOf(s.Columns.First(c => c.Name == "ResourceId"))]}'"));
-                    string combinedArcIds = string.Join(", ", getArcResourceIdsRows);
-                    string customQueryForArg = string.Format(CommonConstants.CustomQueryForArg, combinedArcIds);
-
-                    // For ARG Query to get the ARC resource details
-                    QueryForArg(customQueryForArg);
-                }
-                else
-                {
-                    WriteInformation($"No records", new string[] { "PSHOST" });
-                }
-                #endregion
+                //    // For ARG Query to get the ARC resource details
+                //    QueryForArg(customQueryForArg);
+                //}
+                //else
+                //{
+                //    WriteInformation($"No records", new string[] { "PSHOST" });
+                //}
+                //#endregion
             }
         }
     }
