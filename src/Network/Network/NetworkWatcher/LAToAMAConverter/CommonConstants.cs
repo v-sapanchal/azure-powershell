@@ -13,5 +13,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
         public const string MMAWorkspaceMachineEndpointResourceType = "MMAWorkspaceMachine";
         public const string MMAWorkspaceNetworkEndpointResourceType = "MMAWorkspaceNetwork";
         public static TimeSpan TimeSpanForLAQuery { get; } = TimeSpan.FromDays(1);
+        public const string CMSuffix = "_PSMigrate";
     }
 }
