@@ -9,6 +9,8 @@ using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
 using Microsoft.Azure.Management.Network.Models;
 using Newtonsoft.Json;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -58,8 +60,11 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             if (MMAWorkspaceConnectionMonitors?.Count() > 0)
             {
-                var MigratedCM = MigrateCMs(MMAWorkspaceConnectionMonitors).GetAwaiter().GetResult();
-                WriteObject(MigratedCM);
+                var cmWithArmEndpoints = MigrateCMs(MMAWorkspaceConnectionMonitors).GetAwaiter().GetResult();
+                WriteObject(cmWithArmEndpoints);
+
+                IList<ConnectionMonitorResult> outputCMs = cmWithArmEndpoints.Select(cm => MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(cm)).ToList();
+
             }
         }
     }
