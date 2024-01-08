@@ -24,7 +24,6 @@ using System.Management.Automation;
 using Microsoft.Azure.Commands.Common.Authentication;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
 using Microsoft.Azure.Management.Internal.Resources.Models;
-using Newtonsoft.Json;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -106,7 +105,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             }
 
             IEnumerable<GenericResource> allCMs = GetConnectionMonitorBySubscriptions(subscriptionIds, this.Region);
-            IEnumerable<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, this.CMEndpointType ?? CommonConstants.MMAWorkspaceMachineEndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
+            List<ConnectionMonitorResult> allCmHasMMAWorkspaceMachine = GetConnectionMonitorHasMMAWorkspaceMachineEndpoint(allCMs, this.CMEndpointType ?? CommonConstants.MMAWorkspaceMachineEndpointResourceType, this.WorkSpaceId)?.GetAwaiter().GetResult();
+
             if (allCmHasMMAWorkspaceMachine?.Count() > 0)
             {
                 WriteInformation($"Total number of Connection Monitors which has MMAWorkspace Endpoints : {allCmHasMMAWorkspaceMachine?.Count()}\n", new string[] { "PSHOST" });

@@ -9,6 +9,9 @@ using Microsoft.Azure.Commands.ResourceManager.Common;
 using Microsoft.Azure.Commands.Common.Authentication.ResourceManager;
 using Microsoft.Azure.Management.Network.Models;
 using Newtonsoft.Json;
+using System.Collections.Generic;
+using Microsoft.Rest.Serialization;
+using Newtonsoft.Json.Linq;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -58,9 +61,80 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             if (MMAWorkspaceConnectionMonitors?.Count() > 0)
             {
-                var MigratedCM = MigrateCMs(MMAWorkspaceConnectionMonitors).GetAwaiter().GetResult();
-                WriteObject(MigratedCM);
+                var cmWithArmEndpoints = MigrateCMs(MMAWorkspaceConnectionMonitors).GetAwaiter().GetResult();
+                WriteObject(cmWithArmEndpoints);
+
+                List<ConnectionMonitorResult> outputCMs = cmWithArmEndpoints.Select(cm => MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(cm)).ToList();
+                
+                // group cm output by location/subs
+                string template = ARMTemplateForConnectionMonitors(outputCMs);
+                WriteInformation($" Template -----------------------------------------------------------\n", new string[] { "PSHOST" });
+                WriteInformation($" {template} \n", new string[] { "PSHOST" });
             }
+        }
+
+        private string ARMTemplateForConnectionMonitors(List<ConnectionMonitorResult> connectionMonitors)
+        {
+            List<string> cms = new List<string>();
+
+            JObject jo = new JObject();
+            jo.Add("$schema", "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#");
+            jo.Add("contentVersion", "1.0.0.0");
+            jo.Add("parameters", new JObject());
+
+            JArray jarray = new JArray();
+
+            connectionMonitors.ForEach(monitor =>
+            {
+                string s = CreateArmTemplateForCM(monitor);
+                jarray.Add(s);
+                cms.Add(s);
+            });
+
+            string cmTemplate = string.Join(",", cms);
+            jo.Add("resources", jarray);
+            string armTemplate = jo.ToString();
+            armTemplate = armTemplate.Replace("\\\"", "\"");
+
+            //Using JToken, it adds extra "" due to which template becomes invalid, hence trying to create template without JToken.
+
+            string armt = "{\"$schema\":\"https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#\",\"contentVersion\":\"1.0.0.0\",\"parameters\":{},\"resources\":[";
+            armt += cmTemplate;
+            armt += "]}";
+
+            // this armt is final template which directly can be used to deploy.
+            Console.WriteLine("writing without jtoken");
+            Console.WriteLine(armt);
+            Console.WriteLine("----------------------");
+
+            return armt;
+        }
+
+        // Method to create ARM template for a ConnectionMonitor
+        private string CreateArmTemplateForCM(ConnectionMonitorResult cm)
+        {
+            JsonSerializerSettings serializationSettings = new JsonSerializerSettings
+            {
+                //Formatting = Newtonsoft.Json.Formatting.Indented,
+                DateFormatHandling = Newtonsoft.Json.DateFormatHandling.IsoDateFormat,
+                DateTimeZoneHandling = Newtonsoft.Json.DateTimeZoneHandling.Utc,
+                NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore,
+                ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Serialize,
+                // ContractResolver = new ReadOnlyJsonContractResolver(),
+                ContractResolver = new IgnorePropertiesResolver(new List<string>() { "id", "etag", "properties.connectionMonitorType", "properties.startTime", "properties.provisioningState" }),
+                Converters = new List<JsonConverter>
+                    {
+                        new Iso8601TimeSpanConverter()
+                    }
+            };
+            serializationSettings.Converters.Add(new TransformationJsonConverter());
+
+            string cmResultJson = JsonConvert.SerializeObject(cm, serializationSettings);
+            JObject jo = JObject.Parse(cmResultJson);
+            jo["apiVersion"] = "2020-11-01";
+            jo["name"] = string.Concat("networkwatcher_", cm.Location, "/", cm.Name);
+            cmResultJson = jo.ToString(Formatting.None);
+            return cmResultJson;
         }
     }
 }
