@@ -65,11 +65,22 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 WriteObject(cmWithArmEndpoints);
 
                 List<ConnectionMonitorResult> outputCMs = cmWithArmEndpoints.Select(cm => MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(cm)).ToList();
-                
+
                 // group cm output by location/subs
-                string template = ARMTemplateForConnectionMonitors(outputCMs);
-                WriteInformation($" Template -----------------------------------------------------------\n", new string[] { "PSHOST" });
-                WriteInformation($" {template} \n", new string[] { "PSHOST" });
+                if (outputCMs != null && outputCMs.Count > 0)
+                {
+                    var cmListGrpByLocation = outputCMs.GroupBy(g => new { g.Location })
+                        ?.OrderByDescending(o => o.Key.Location)?.Select(s => s.ToList());
+                    foreach (var cmList in cmListGrpByLocation)
+                    {
+                        string template = ARMTemplateForConnectionMonitors(cmList);
+                        WriteInformation($" --------------------------- Template ------------------------------------------\n{template}", new string[] { "PSHOST" });
+                    }
+                }
+                else
+                {
+                    WriteInformation($" No Connection Monitor found.\n", new string[] { "PSHOST" });
+                }
             }
         }
 
