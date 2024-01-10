@@ -322,6 +322,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                                     ValidStatusCodeRanges = config?.ValidStatusCodeRanges,
                                     PreferHTTPS = config?.PreferHTTPS
                                 };
+
+                                testConfigurationObject.Protocol = "Http";
                             }
 
                             else if (testConfiguration.ProtocolConfiguration is PSNetworkWatcherConnectionMonitorIcmpConfiguration)
@@ -330,6 +332,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                                 {
                                     DisableTraceRoute = ((PSNetworkWatcherConnectionMonitorIcmpConfiguration)testConfiguration.ProtocolConfiguration).DisableTraceRoute
                                 };
+
+                                testConfigurationObject.Protocol = "Icmp";
                             }
 
                             else if (testConfiguration.ProtocolConfiguration is PSNetworkWatcherConnectionMonitorTcpConfiguration)
@@ -341,6 +345,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                                     Port = config?.Port,
                                     DestinationPortBehavior = config?.DestinationPortBehavior
                                 };
+
+                                testConfigurationObject.Protocol = "Tcp";
                             }
 
                             connectionMonitorResult.TestConfigurations.Add(testConfigurationObject);
@@ -585,6 +591,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     testGrpEndpoint.ResourceId = firstResult["ResourceId"];
                     testGrpEndpoint.Name = firstResult["AgentFqdn"];
                     testGrpEndpoint.Type = CommonConstants.AzureArcVMType;
+                    // For AzureArcVM type, address properties not required, passing empty
+                    testGrpEndpoint.Address = string.Empty;
                 }
             }
         }

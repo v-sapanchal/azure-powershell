@@ -74,7 +74,7 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                     foreach (var cmList in cmListGrpByLocation)
                     {
                         string template = ARMTemplateForConnectionMonitors(cmList);
-                        WriteInformation($" --------------------------- Template ------------------------------------------\n{template}", new string[] { "PSHOST" });
+                        WriteInformation($" Template ------------------------------------------\n{template}\n\n", new string[] { "PSHOST" });
                     }
                 }
                 else
@@ -114,9 +114,9 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             armt += "]}";
 
             // this armt is final template which directly can be used to deploy.
-            Console.WriteLine("writing without jtoken");
+            Console.WriteLine("writing without jtoken\n");
             Console.WriteLine(armt);
-            Console.WriteLine("----------------------");
+            Console.WriteLine("----------------------\n\n");
 
             return armt;
         }
