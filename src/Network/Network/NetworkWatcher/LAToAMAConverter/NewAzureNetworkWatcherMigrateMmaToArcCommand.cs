@@ -62,11 +62,8 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             if (MMAWorkspaceConnectionMonitors?.Count() > 0)
             {
                 var cmWithArmEndpoints = MigrateCMs(MMAWorkspaceConnectionMonitors).GetAwaiter().GetResult();
-                WriteObject(cmWithArmEndpoints);
+                List<ConnectionMonitorResult> outputCMs = cmWithArmEndpoints?.Select(cm => MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(cm))?.ToList();
 
-                List<ConnectionMonitorResult> outputCMs = cmWithArmEndpoints.Select(cm => MapPSMmaWorkspaceMachineConnectionMonitorToConnectionMonitorResult(cm)).ToList();
-
-                // group cm output by location/subs
                 if (outputCMs != null && outputCMs.Count > 0)
                 {
                     var cmListGrpByLocation = outputCMs.GroupBy(g => new { g.Location })
@@ -76,6 +73,9 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                         string template = ARMTemplateForConnectionMonitors(cmList);
                         WriteInformation($" Template ------------------------------------------\n{template}\n\n", new string[] { "PSHOST" });
                     }
+
+                    WriteInformation($"CM List with Migrated LA to AMA endpoints----\n", new string[] { "PSHOST" });
+                    WriteObject(cmWithArmEndpoints);
                 }
                 else
                 {

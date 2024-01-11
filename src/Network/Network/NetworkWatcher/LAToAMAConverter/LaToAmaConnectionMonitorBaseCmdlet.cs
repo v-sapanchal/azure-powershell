@@ -425,17 +425,10 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             //WriteInformation($"Before update\n{JsonConvert.SerializeObject(getCmWithEndpointsAndNetworkAgentDataList, Formatting.Indented)}\n", new string[] { "PSHOST" });
 
-            Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>> copyableCmWithTestGrpsDict
-                = new Dictionary<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor, IEnumerable<PSNetworkWatcherConnectionMonitorTestGroupObject>>();
-            List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> copyableCmList = new List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor>();
+            List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor> UpdatedArcCmList = new List<PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor>();
 
             getCmWithEndpointsAndNetworkAgentDataList.ForEach(data =>
             {
-                PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor copyableCM = null;
-                List<PSNetworkWatcherConnectionMonitorTestGroupObject> copyableTestGrps = new List<PSNetworkWatcherConnectionMonitorTestGroupObject>();
-                PSNetworkWatcherConnectionMonitorTestGroupObject copyableTestGrp = null;
-                List<PSNetworkWatcherConnectionMonitorEndpointObject> copyableEndpoints = null;
-
                 Dictionary<string, List<PSNetworkWatcherConnectionMonitorEndpointObject>> dictDestinationMMANetworkIdToSubnetAddresses = null;
                 Dictionary<string, List<PSNetworkWatcherConnectionMonitorEndpointObject>> dictSourcesMMANetworkIdToSubnetAddresses = null;
 
@@ -444,9 +437,9 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 || iw.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
                 ?.ForEach(testGrp =>
                 {
-                    copyableTestGrp = copyableTestGrp ?? GetCopiedTestGroupObject(testGrp);
-                    copyableEndpoints = copyableEndpoints ?? new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
-                    copyableTestGrp.Destinations = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
+                    //copyableTestGrp = copyableTestGrp ?? GetCopiedTestGroupObject(testGrp);
+                    //copyableEndpoints = copyableEndpoints ?? new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
+                    //copyableTestGrp.Destinations = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
 
                     List<PSNetworkWatcherConnectionMonitorEndpointObject> destinationMMAWorkspaceNetworkEndpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
                     dictDestinationMMANetworkIdToSubnetAddresses = dictDestinationMMANetworkIdToSubnetAddresses ?? new Dictionary<string, List<PSNetworkWatcherConnectionMonitorEndpointObject>>();
@@ -458,22 +451,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                         if (data.EndpointWithNetworkAgentData.ContainsKey(destination.ResourceId)
                         && data.EndpointWithNetworkAgentData[destination.ResourceId]?.Results?.Count() > 0)
                         {
-                            UpdateTestGrpEndpoints(destination, data.EndpointWithNetworkAgentData,
-                                destinationMMAWorkspaceNetworkEndpoints, dictDestinationMMANetworkIdToSubnetAddresses);
-                        }
-                        else
-                        {
-                            copyableCM = copyableCM ?? CopyCMObject(data.Cm);
-                            //keep the same source
-                            copyableTestGrp.Sources = testGrp.Sources;
-                            //Modify Destination
-                            copyableTestGrp.Destinations.Add(destination);
-                            copyableTestGrps.Add(copyableTestGrp);
-                            copyableCM.TestGroups.AddRange(copyableTestGrps);
+                            bool isUpdatedEndpoint = UpdateTestGrpEndpoints(destination, data.EndpointWithNetworkAgentData,
+                                   destinationMMAWorkspaceNetworkEndpoints, dictDestinationMMANetworkIdToSubnetAddresses);
 
-                            if (!copyableCmList.Any(a => a.Id.Equals($"{data.Cm.Id}{CommonConstants.CMSuffix}", StringComparison.OrdinalIgnoreCase)))
+                            if (isUpdatedEndpoint && !UpdatedArcCmList.Any(a => a.Id.Equals(data.Cm.Id, StringComparison.OrdinalIgnoreCase)))
                             {
-                                copyableCmList.Add(copyableCM);
+                                UpdatedArcCmList.Add(data.Cm);
                             }
                         }
                     });
@@ -484,10 +467,6 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                 || iw.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)))
                 ?.ForEach(testGrp =>
                 {
-                    copyableTestGrp = copyableTestGrp ?? GetCopiedTestGroupObject(testGrp);
-                    copyableEndpoints = copyableEndpoints ?? new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
-                    copyableTestGrp.Sources = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
-
                     List<PSNetworkWatcherConnectionMonitorEndpointObject> sourceMMAWorkspaceNetworkEndpoints = new List<PSNetworkWatcherConnectionMonitorEndpointObject>();
                     dictSourcesMMANetworkIdToSubnetAddresses = dictSourcesMMANetworkIdToSubnetAddresses ?? new Dictionary<string, List<PSNetworkWatcherConnectionMonitorEndpointObject>>();
 
@@ -498,22 +477,12 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
                         if (data.EndpointWithNetworkAgentData.ContainsKey(source.ResourceId)
                         && data.EndpointWithNetworkAgentData[source.ResourceId]?.Results?.Count() > 0)
                         {
-                            UpdateTestGrpEndpoints(source, data.EndpointWithNetworkAgentData,
+                            bool isUpdatedEndpoint = UpdateTestGrpEndpoints(source, data.EndpointWithNetworkAgentData,
                                 sourceMMAWorkspaceNetworkEndpoints, dictSourcesMMANetworkIdToSubnetAddresses);
-                        }
-                        else
-                        {
-                            copyableCM = copyableCM ?? CopyCMObject(data.Cm);
-                            //Keeping the same destination
-                            copyableTestGrp.Destinations = testGrp.Destinations;
 
-                            //Modify sources
-                            copyableTestGrp.Sources.Add(source);
-                            copyableTestGrps.Add(copyableTestGrp);
-                            copyableCM.TestGroups.AddRange(copyableTestGrps);
-                            if (!copyableCmList.Any(a => a.Id.Equals($"{data.Cm.Id}{CommonConstants.CMSuffix}", StringComparison.OrdinalIgnoreCase)))
+                            if (isUpdatedEndpoint && !UpdatedArcCmList.Any(a => a.Id.Equals(data.Cm.Id, StringComparison.OrdinalIgnoreCase)))
                             {
-                                copyableCmList.Add(copyableCM);
+                                UpdatedArcCmList.Add(data.Cm);
                             }
                         }
                     });
@@ -541,60 +510,68 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 
             // WriteInformation($"After Modification in CMs: \n{JsonConvert.SerializeObject(getCmWithEndpointsAndNetworkAgentDataList, Formatting.Indented)}\n", new string[] { "PSHOST" });
 
-            // Combined both list (Updating existing CM and Newly created CM(with '_PSMigrate' suffix)
-            var updatedCMs = getCmWithEndpointsAndNetworkAgentDataList.Select(s => s.Cm).ToList();
-            var combinedList = updatedCMs?.Concat(copyableCmList).ToList();
-
-            return combinedList;
+            return UpdatedArcCmList;
         }
 
-        private void UpdateTestGrpEndpoints(PSNetworkWatcherConnectionMonitorEndpointObject testGrpEndpoint,
+        private bool UpdateTestGrpEndpoints(PSNetworkWatcherConnectionMonitorEndpointObject testGrpEndpoint,
             Dictionary<string, Azure.OperationalInsights.Models.QueryResults> EndpointQueryResult,
             List<PSNetworkWatcherConnectionMonitorEndpointObject> mmaWorkspaceNetworkEndpoints,
             Dictionary<string, List<PSNetworkWatcherConnectionMonitorEndpointObject>> dictMMANetworkIdToSubnetAddresses)
         {
             var queryResult = EndpointQueryResult[testGrpEndpoint.ResourceId]?.Results;
-            // For MMAWorkspaceNetwork
-            if (testGrpEndpoint.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)
-            && testGrpEndpoint?.Scope?.Include != null)
+            if (queryResult != null)
             {
-                var matchedArcSubnetAddressesList = queryResult.Where(w =>
-                testGrpEndpoint?.Scope?.Include.Any(a => a.Address.Equals(w["SubnetId"], StringComparison.OrdinalIgnoreCase)) == true);
-
-                //Need to discuss a point here, if not a single subnet is matched with include addresses
-
-                PSNetworkWatcherConnectionMonitorEndpointObject endpointObject = null;
-                int i = 0;
-                foreach (var arcDetail in matchedArcSubnetAddressesList)
+                bool isUpdated = false;
+                // For MMAWorkspaceNetwork
+                if (testGrpEndpoint.Type.Equals(CommonConstants.MMAWorkspaceNetworkEndpointResourceType, StringComparison.OrdinalIgnoreCase)
+                && testGrpEndpoint?.Scope?.Include != null)
                 {
-                    endpointObject = new PSNetworkWatcherConnectionMonitorEndpointObject
-                    {
-                        Address = arcDetail["AgentIP"],
-                        Name = $"{arcDetail["AgentFqdn"]}-{i++}",
-                        //Need to check for resourceId and other field as well
-                        Type = CommonConstants.AzureArcVMType,
-                    };
+                    var matchedArcSubnetAddressesList = queryResult.Where(w =>
+                    testGrpEndpoint?.Scope?.Include.Any(a => a.Address.Equals(w["SubnetId"], StringComparison.OrdinalIgnoreCase)) == true);
 
-                    mmaWorkspaceNetworkEndpoints.Add(endpointObject);
-                    if (!dictMMANetworkIdToSubnetAddresses.ContainsKey(testGrpEndpoint?.ResourceId))
+                    //Need to discuss a point here, if not a single subnet is matched with include addresses
+
+                    PSNetworkWatcherConnectionMonitorEndpointObject endpointObject = null;
+                    int i = 0;
+                    foreach (var arcDetail in matchedArcSubnetAddressesList)
                     {
-                        dictMMANetworkIdToSubnetAddresses.Add(testGrpEndpoint?.ResourceId, mmaWorkspaceNetworkEndpoints);
+                        endpointObject = new PSNetworkWatcherConnectionMonitorEndpointObject
+                        {
+                            Address = arcDetail["AgentIP"],
+                            Name = $"{arcDetail["AgentFqdn"]}-{i++}",
+                            //Need to check for resourceId and other field as well
+                            Type = CommonConstants.AzureArcVMType,
+                        };
+
+                        mmaWorkspaceNetworkEndpoints.Add(endpointObject);
+                        if (!dictMMANetworkIdToSubnetAddresses.ContainsKey(testGrpEndpoint?.ResourceId))
+                        {
+                            dictMMANetworkIdToSubnetAddresses.Add(testGrpEndpoint?.ResourceId, mmaWorkspaceNetworkEndpoints);
+                        }
+                    }
+                    //Check for MMANetwork CM entry
+                    isUpdated = true;
+                }
+                else
+                {
+                    //Need to check, for MMaWorkSpaceMachine, we are using first records and updating the data
+                    var firstResult = queryResult.FirstOrDefault();
+                    if (firstResult != null && !string.IsNullOrEmpty(firstResult["ResourceId"]))
+                    {
+                        testGrpEndpoint.ResourceId = firstResult["ResourceId"];
+                        testGrpEndpoint.Name = firstResult["AgentFqdn"];
+                        testGrpEndpoint.Type = CommonConstants.AzureArcVMType;
+                        // For AzureArcVM type, address properties not required, passing empty
+                        testGrpEndpoint.Address = string.Empty;
+
+                        isUpdated = true;
                     }
                 }
+
+                return isUpdated;
             }
-            else
-            {
-                //Need to check, for MMaWorkSpaceMachine, we are using first records and updating the data
-                var firstResult = queryResult.FirstOrDefault();
-                if (firstResult != null)
-                {
-                    testGrpEndpoint.ResourceId = firstResult["ResourceId"];
-                    testGrpEndpoint.Name = firstResult["AgentFqdn"];
-                    testGrpEndpoint.Type = CommonConstants.AzureArcVMType;
-                    // For AzureArcVM type, address properties not required, passing empty
-                    testGrpEndpoint.Address = string.Empty;
-                }
-            }
+
+            return false;
         }
 
         private PSNetworkWatcherConnectionMonitorTestGroupObject GetCopiedTestGroupObject(PSNetworkWatcherConnectionMonitorTestGroupObject currentTestGrpObject)
