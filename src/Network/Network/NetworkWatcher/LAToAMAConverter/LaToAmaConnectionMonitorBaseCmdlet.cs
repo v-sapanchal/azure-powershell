@@ -41,6 +41,7 @@ using System.Runtime.Caching;
 using Microsoft.WindowsAzure.Commands.Utilities.Common;
 using Microsoft.Azure.Commands.Common.Strategies;
 using Microsoft.Azure.Management.Monitor.Version2018_09_01.Models;
+using System.Collections;
 
 namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
 {
@@ -101,6 +102,18 @@ namespace Microsoft.Azure.Commands.Network.NetworkWatcher.LAToAMAConverter
             }
 
             return genericCMResources;
+        }
+
+        protected IEnumerable<GenericResource> GetResourcesById(IEnumerable<string> resourceIds)
+        {
+            List<GenericResource> genericResources = new List<GenericResource>();
+            Parallel.ForEach(resourceIds, id =>
+            {
+                //Need to check API Version
+                genericResources.Add(ArmClient.Resources.GetById(id, ""));
+            });
+
+            return genericResources;
         }
 
         protected PSNetworkWatcherMmaWorkspaceMachineConnectionMonitor MapConnectionMonitorResultToPSMmaWorkspaceMachineConnectionMonitor(ConnectionMonitorResult connectionMonitor)
